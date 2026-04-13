@@ -1,11 +1,13 @@
 """
 Custom PyQt6 widgets:
-  GaugeWidget   — semicircular Fear & Greed gauge
-  RegimeCard    — coloured regime status card
-  MetricCard    — small single-metric tile
+  GaugeWidget      — semicircular Fear & Greed gauge
+  RegimeCard       — coloured regime status card
+  MetricCard       — small single-metric tile
+  CycleClockWidget — arc showing BTC 4-year halving cycle position
 """
 
 import math
+from datetime import datetime
 
 from PyQt6.QtCore import Qt, QRectF, QPointF
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QBrush
@@ -36,13 +38,12 @@ def regime_color(condition) -> str:
 
 # ── GaugeWidget ───────────────────────────────────────────────────────────────
 
-# Arc segments: (hex_color, start_deg, span_deg) left→right = 180→0
 _GAUGE_SEGMENTS = [
-    ("#f85149", 180, 36),  # 0–20  Extreme Fear
-    ("#e07b39", 144, 36),  # 20–40 Fear
-    ("#d29922", 108, 36),  # 40–60 Neutral
-    ("#7cb342",  72, 36),  # 60–80 Greed
-    ("#3fb950",  36, 36),  # 80–100 Extreme Greed
+    ("#f85149", 180, 36),
+    ("#e07b39", 144, 36),
+    ("#d29922", 108, 36),
+    ("#7cb342",  72, 36),
+    ("#3fb950",  36, 36),
 ]
 
 
@@ -52,7 +53,7 @@ class GaugeWidget(QWidget):
         self.title = title
         self._value: float | None = None
         self._label: str = ""
-        self.setMinimumSize(220, 155)
+        self.setMinimumSize(250, 175)
 
     def set_value(self, value: float, label: str = "") -> None:
         self._value = value
@@ -72,7 +73,6 @@ class GaugeWidget(QWidget):
 
         arc_rect = QRectF(cx - inner, cy - inner, inner * 2, inner * 2)
 
-        # Coloured arc track
         pen = QPen()
         pen.setCapStyle(Qt.PenCapStyle.FlatCap)
         pen.setWidth(track_w)
@@ -81,7 +81,6 @@ class GaugeWidget(QWidget):
             p.setPen(pen)
             p.drawArc(arc_rect, start * 16, -span * 16)
 
-        # Needle
         if self._value is not None:
             norm = max(0.0, min(1.0, self._value / 100.0))
             angle_rad = math.radians(180 - norm * 180)
@@ -95,23 +94,19 @@ class GaugeWidget(QWidget):
             p.setPen(Qt.PenStyle.NoPen)
             p.drawEllipse(QPointF(cx, cy), 5, 5)
 
-        # Score text
         p.setPen(QPen(QColor(COLORS["text_primary"])))
-        p.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+        p.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
         val_str = f"{int(self._value)}" if self._value is not None else "—"
         p.drawText(QRectF(cx - 50, cy - 14, 100, 30), Qt.AlignmentFlag.AlignCenter, val_str)
 
-        # Rating label
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 9))
+        p.setFont(QFont("Segoe UI", 12))
         p.drawText(QRectF(cx - 75, cy + 18, 150, 18), Qt.AlignmentFlag.AlignCenter, self._label)
 
-        # Title
-        p.setFont(QFont("Segoe UI", 9))
+        p.setFont(QFont("Segoe UI", 12))
         p.drawText(QRectF(0, 6, w, 18), Qt.AlignmentFlag.AlignCenter, self.title)
 
-        # Left / right axis labels
-        p.setFont(QFont("Segoe UI", 8))
+        p.setFont(QFont("Segoe UI", 11))
         p.drawText(QRectF(cx - radius - 2, cy - 14, 44, 16), Qt.AlignmentFlag.AlignCenter, "Fear")
         p.drawText(QRectF(cx + radius - 42, cy - 14, 44, 16), Qt.AlignmentFlag.AlignCenter, "Greed")
 
@@ -124,7 +119,7 @@ class RegimeCard(QWidget):
         self._regime = "—"
         self._score: int | None = None
         self._color = COLORS["na"]
-        self.setMinimumSize(155, 130)
+        self.setMinimumSize(175, 150)
 
     def set_regime(self, regime: str, score: int, color: str) -> None:
         self._regime = regime
@@ -138,30 +133,25 @@ class RegimeCard(QWidget):
 
         w, h = self.width(), self.height()
 
-        # Card background + coloured border
         p.setBrush(QBrush(QColor(COLORS["card_bg"])))
         p.setPen(QPen(QColor(self._color), 2))
         p.drawRoundedRect(2, 2, w - 4, h - 4, 8, 8)
 
-        # "REGIME" label
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 9))
-        p.drawText(QRectF(0, 12, w, 18), Qt.AlignmentFlag.AlignCenter, "REGIME")
+        p.setFont(QFont("Segoe UI", 12))
+        p.drawText(QRectF(0, 14, w, 22), Qt.AlignmentFlag.AlignCenter, "REGIME")
 
-        # Regime name
         p.setPen(QPen(QColor(self._color)))
-        p.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        p.drawText(QRectF(0, 32, w, 36), Qt.AlignmentFlag.AlignCenter, self._regime)
+        p.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        p.drawText(QRectF(0, 40, w, 40), Qt.AlignmentFlag.AlignCenter, self._regime)
 
-        # Score
         if self._score is not None:
             p.setPen(QPen(QColor(COLORS["text_secondary"])))
-            p.setFont(QFont("Segoe UI", 10))
+            p.setFont(QFont("Segoe UI", 13))
             sign = "+" if self._score > 0 else ""
-            p.drawText(QRectF(0, 72, w, 22), Qt.AlignmentFlag.AlignCenter,
+            p.drawText(QRectF(0, 86, w, 24), Qt.AlignmentFlag.AlignCenter,
                        f"Score: {sign}{self._score}")
 
-        # Bottom colour bar
         p.setBrush(QBrush(QColor(self._color)))
         p.setPen(Qt.PenStyle.NoPen)
         p.drawRoundedRect(10, h - 14, w - 20, 6, 3, 3)
@@ -176,8 +166,8 @@ class MetricCard(QWidget):
         self._value = "—"
         self._sub = ""
         self._val_color = COLORS["text_primary"]
-        self.setMinimumSize(110, 82)
-        self.setMaximumHeight(92)
+        self.setMinimumSize(130, 100)
+        self.setMaximumHeight(115)
 
     def set_value(self, value: str, sub: str = "", color: str | None = None) -> None:
         self._value = value
@@ -195,18 +185,132 @@ class MetricCard(QWidget):
         p.setPen(QPen(QColor(COLORS["card_border"]), 1))
         p.drawRoundedRect(1, 1, w - 2, h - 2, 6, 6)
 
-        # Label
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 8))
-        p.drawText(QRectF(4, 8, w - 8, 15), Qt.AlignmentFlag.AlignCenter, self._label)
+        p.setFont(QFont("Segoe UI", 11))
+        p.drawText(QRectF(4, 8, w - 8, 20), Qt.AlignmentFlag.AlignCenter, self._label)
 
-        # Value
         p.setPen(QPen(QColor(self._val_color)))
-        p.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        p.drawText(QRectF(4, 24, w - 8, 26), Qt.AlignmentFlag.AlignCenter, self._value)
+        p.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        p.drawText(QRectF(4, 30, w - 8, 30), Qt.AlignmentFlag.AlignCenter, self._value)
 
-        # Sub-text
         if self._sub:
             p.setPen(QPen(QColor(COLORS["text_secondary"])))
-            p.setFont(QFont("Segoe UI", 8))
-            p.drawText(QRectF(4, 52, w - 8, 14), Qt.AlignmentFlag.AlignCenter, self._sub)
+            p.setFont(QFont("Segoe UI", 11))
+            p.drawText(QRectF(4, 64, w - 8, 18), Qt.AlignmentFlag.AlignCenter, self._sub)
+
+
+# ── CycleClockWidget ──────────────────────────────────────────────────────────
+
+_HALVINGS = [
+    datetime(2012, 11, 28), datetime(2016, 7,  9),
+    datetime(2020, 5,  11), datetime(2024, 4, 19),
+    datetime(2028, 4,  15),
+]
+
+_CYCLE_PHASES = [
+    (0.08, "POST-HALVING", "#3fb950", "ACCUMULATE",  +2),
+    (0.38, "BULL RUN",     "#d29922", "ADD / HOLD",   +1),
+    (0.48, "PEAK ZONE",    "#e07b39", "REDUCE",       -1),
+    (0.87, "BEAR MARKET",  "#f85149", "HOLD / DCA",   -2),
+    (1.00, "PRE-HALVING",  "#58a6ff", "ACCUMULATE",   +1),
+]
+
+
+class CycleClockWidget(QWidget):
+    """270° arc clock showing position within the BTC 4-year halving cycle."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(250, 230)
+        self._progress   = 0.0
+        self._phase      = "—"
+        self._action     = "—"
+        self._color      = COLORS["na"]
+        self._days_in    = 0
+        self._days_left  = 0
+        self._score      = 0
+        self._refresh()
+
+    def _refresh(self):
+        now  = datetime.now()
+        past   = [h for h in _HALVINGS if h <= now]
+        future = [h for h in _HALVINGS if h > now]
+        if not past or not future:
+            return
+        last, nxt        = past[-1], future[0]
+        total            = (nxt - last).days
+        self._days_in    = (now - last).days
+        self._days_left  = (nxt - now).days
+        self._progress   = min(1.0, self._days_in / total)
+        for end_frac, label, color, action, score in _CYCLE_PHASES:
+            if self._progress <= end_frac:
+                self._phase  = label
+                self._color  = color
+                self._action = action
+                self._score  = score
+                break
+        self.update()
+
+    def get_score(self) -> int:
+        return self._score
+
+    def get_phase(self) -> str:
+        return self._phase
+
+    def get_action(self) -> str:
+        return self._action
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w, h    = self.width(), self.height()
+        cx      = w / 2
+        cy      = h * 0.50
+        radius  = min(w * 0.40, h * 0.46)
+        track_w = max(14, int(radius * 0.18))
+        inner   = radius - track_w / 2
+        arc_rect = QRectF(cx - inner, cy - inner, inner * 2, inner * 2)
+
+        ARC_START = 225
+        ARC_SWEEP = -270
+
+        pen = QPen()
+        pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+        pen.setWidth(track_w)
+        prev = 0.0
+        for end_frac, _, color, _, _ in _CYCLE_PHASES:
+            seg_start = ARC_START + prev * ARC_SWEEP
+            seg_span  = (end_frac - prev) * ARC_SWEEP
+            pen.setColor(QColor(color))
+            p.setPen(pen)
+            p.drawArc(arc_rect, int(seg_start * 16), int(seg_span * 16))
+            prev = end_frac
+
+        angle_rad = math.radians(ARC_START + self._progress * ARC_SWEEP)
+        dot_x = cx + inner * math.cos(angle_rad)
+        dot_y = cy - inner * math.sin(angle_rad)
+        p.setBrush(QBrush(QColor("#ffffff")))
+        p.setPen(QPen(QColor(COLORS["bg"]), 2))
+        p.drawEllipse(QPointF(dot_x, dot_y), 7, 7)
+
+        p.setPen(QPen(QColor(COLORS["text_secondary"])))
+        p.setFont(QFont("Segoe UI", 12))
+        p.drawText(QRectF(0, 5, w, 16), Qt.AlignmentFlag.AlignCenter, "4-YEAR HALVING CYCLE")
+
+        p.setPen(QPen(QColor(self._color)))
+        p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        p.drawText(QRectF(cx - inner * 0.85, cy - inner * 0.48, inner * 1.7, 18),
+                   Qt.AlignmentFlag.AlignCenter, self._phase)
+
+        p.setPen(QPen(QColor(COLORS["text_secondary"])))
+        p.setFont(QFont("Segoe UI", 11))
+        p.drawText(QRectF(cx - inner * 0.85, cy - inner * 0.18, inner * 1.7, 15),
+                   Qt.AlignmentFlag.AlignCenter, f"Day {self._days_in}")
+        p.drawText(QRectF(cx - inner * 0.85, cy + inner * 0.08, inner * 1.7, 15),
+                   Qt.AlignmentFlag.AlignCenter, f"{self._days_left}d to halving")
+
+        action_y = cy + inner + track_w * 0.5 + 10
+        p.setPen(QPen(QColor(self._color)))
+        p.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        p.drawText(QRectF(0, action_y, w, 24), Qt.AlignmentFlag.AlignCenter, self._action)
