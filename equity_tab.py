@@ -1,11 +1,12 @@
 import numpy as np
+import pandas as pd
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt, QRectF
-from PyQt6.QtGui import QColor, QPen
+from PyQt6.QtGui import QBrush, QColor, QPen
 from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QSizePolicy, QVBoxLayout, QWidget)
 
-from regime import compute_equity_regime
+from regime import compute_equity_regime, compute_equity_regime_history
 from widgets import COLORS, GaugeWidget, MetricCard, RegimeCard, regime_color
 
 # ── Chart metadata ─────────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ class EquityTab(QWidget):
         super().__init__(parent)
         self._data: dict = {}
         self._chart_series: dict = {}
+        self._regime_hist: pd.Series | None = None
         self._setup_ui()
 
     # ── UI construction ────────────────────────────────────────────────────────
@@ -93,13 +95,13 @@ class EquityTab(QWidget):
 
         hdr = QLabel("INDICATORS")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 9px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 11px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
             return l
 
         self.lbl_spx_ma   = _lbl("SPX vs 200MA: —")
@@ -140,14 +142,14 @@ class EquityTab(QWidget):
 
         ctrl = QHBoxLayout()
         lbl = QLabel("Chart:")
-        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 10px; border: none;")
+        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
         ctrl.addWidget(lbl)
 
         self.chart_selector = QComboBox()
         self.chart_selector.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 10px; }}"
+            f"padding: 2px 6px; font-size: 13px; }}"
         )
         self.chart_selector.addItems(_CHART_OPTIONS)
         self.chart_selector.currentIndexChanged.connect(self._render_chart)
@@ -155,7 +157,8 @@ class EquityTab(QWidget):
         ctrl.addStretch()
         lay.addLayout(ctrl)
 
-        self.plot = pg.PlotWidget()
+        date_axis = pg.DateAxisItem(orientation="bottom")
+        self.plot = pg.PlotWidget(axisItems={"bottom": date_axis})
         self.plot.setMinimumHeight(180)
         self.plot.showGrid(x=False, y=True, alpha=0.15)
         self.plot.getPlotItem().getAxis("left").setPen(pg.mkPen(color="#30363d"))
@@ -171,11 +174,14 @@ class EquityTab(QWidget):
         self._data = data
         regime = compute_equity_regime(data)
         self.regime_card.set_regime(regime["regime"], regime["score"], regime["color"])
+        if regime.get("factors"):
+            self.regime_card.setToolTip("<br>".join(regime["factors"]))
 
         self._update_gauge(data)
         self._update_labels(data)
         self._update_cards(data)
         self._store_chart_series(data)
+        self._regime_hist = compute_equity_regime_history(data)
         self._render_chart()
 
     def _update_gauge(self, d: dict) -> None:
@@ -195,19 +201,19 @@ class EquityTab(QWidget):
         pct   = d.get("spx_pct_from_200ma")
         if above is not None and pct is not None:
             c = COLORS["risk_on"] if above else COLORS["risk_off"]
-            self.lbl_spx_ma.setStyleSheet(f"color: {c}; font-size: 11px; border: none;")
+            self.lbl_spx_ma.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
             self.lbl_spx_ma.setText(f"SPX vs 200MA: {'ABOVE' if above else 'BELOW'} ({pct:+.1f}%)")
 
         b = d.get("breadth_pct")
         if b is not None:
             c = _breadth_color(b)
-            self.lbl_breadth.setStyleSheet(f"color: {c}; font-size: 11px; border: none;")
+            self.lbl_breadth.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
             self.lbl_breadth.setText(f"Breadth: {b:.1f}% above 200MA")
 
         pc = d.get("put_call_ratio")
         if pc is not None:
             c = _pc_color(pc)
-            self.lbl_pc.setStyleSheet(f"color: {c}; font-size: 11px; border: none;")
+            self.lbl_pc.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
             self.lbl_pc.setText(f"Put/Call: {pc:.3f}")
 
     def _update_cards(self, d: dict) -> None:
@@ -265,9 +271,10 @@ class EquityTab(QWidget):
         if series.empty:
             return
 
-        x = np.arange(len(series))
+        x = np.array([ts.timestamp() for ts in series.index])
         y = series.to_numpy(dtype=float)
 
+        self._add_regime_overlay(series)
         self.plot.plot(x, y, pen=pg.mkPen(color=_CHART_COLORS.get(key, "#58a6ff"), width=1.5))
 
         # Reference lines
@@ -292,3 +299,50 @@ class EquityTab(QWidget):
                 ))
 
         self.plot.setTitle(key, color=COLORS["text_secondary"], size="10pt")
+
+    def _add_regime_overlay(self, series: pd.Series) -> None:
+        if self._regime_hist is None or self._regime_hist.empty:
+            return
+
+        idx = pd.to_datetime(series.index)
+        if idx.tz is not None:
+            idx = idx.tz_localize(None)
+        idx = idx.normalize()
+
+        aligned = self._regime_hist.reindex(idx, method="ffill")
+        x_ts = np.array([ts.timestamp() for ts in series.index])
+
+        color_map = {
+            "RISK-ON":  QColor(63, 185, 80, 60),
+            "NEUTRAL":  QColor(210, 153, 34, 60),
+            "RISK-OFF": QColor(248, 81, 73, 60),
+        }
+
+        prev = None
+        start_x = None
+
+        for i, label in enumerate(aligned):
+            if pd.isna(label) or label is None:
+                if prev is not None:
+                    self._draw_regime_region(start_x, x_ts[i - 1], prev, color_map)
+                    prev = None
+                continue
+            if label != prev:
+                if prev is not None:
+                    self._draw_regime_region(start_x, x_ts[i], prev, color_map)
+                prev = label
+                start_x = x_ts[i]
+
+        if prev is not None and start_x is not None:
+            self._draw_regime_region(start_x, x_ts[-1], prev, color_map)
+
+    def _draw_regime_region(self, x0, x1, label, color_map):
+        item = pg.LinearRegionItem(
+            values=[x0, x1],
+            orientation="vertical",
+            brush=QBrush(color_map.get(label, QColor(0, 0, 0, 0))),
+            pen=pg.mkPen(None),
+            movable=False,
+        )
+        item.setZValue(-10)
+        self.plot.addItem(item)

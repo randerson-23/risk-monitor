@@ -15,7 +15,7 @@ pg.setConfigOption("antialias", True)
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Risk Monitor")
-    app.setFont(QFont("Segoe UI", 10))
+    app.setFont(QFont("Segoe UI", 14))
 
     window = MainWindow()
     window.show()
