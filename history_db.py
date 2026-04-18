@@ -56,8 +56,80 @@ def _connect() -> sqlite3.Connection:
             bet_drivers TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS vol_forecasts (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT    NOT NULL,
+            ticker    TEXT    NOT NULL,
+            horizon   INTEGER NOT NULL,
+            p5        REAL,
+            p25       REAL,
+            median    REAL,
+            p75       REAL,
+            p95       REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS macro_forward (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp    TEXT    NOT NULL,
+            ny_fed_prob  REAL,
+            stl_prob     REAL,
+            nfci         REAL,
+            anfci        REAL
+        )
+    """)
     conn.commit()
     return conn
+
+
+def log_vol_forecast(ticker: str, forecast: dict) -> None:
+    """Log per-horizon price-cone percentiles from a GARCH forecast result."""
+    if not forecast or not forecast.get("ok"):
+        return
+    try:
+        conn = _connect()
+        ts = datetime.now().isoformat()
+        cone_dates = forecast.get("forecast_dates") or []
+        p5 = forecast.get("cone_p5") or []
+        p25 = forecast.get("cone_p25") or []
+        med = forecast.get("cone_median") or []
+        p75 = forecast.get("cone_p75") or []
+        p95 = forecast.get("cone_p95") or []
+        n = min(len(cone_dates), len(p5), len(p25), len(med), len(p75), len(p95))
+        rows = []
+        for h in range(n):
+            rows.append((ts, ticker, h + 1, p5[h], p25[h], med[h], p75[h], p95[h]))
+        conn.executemany("""
+            INSERT INTO vol_forecasts (timestamp, ticker, horizon, p5, p25, median, p75, p95)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, rows)
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        print(f"[history_db] vol_forecast write error: {exc}")
+
+
+def log_macro_forward(data: dict) -> None:
+    """Log recession probs + FCI from a forward-risk fetch."""
+    if not data:
+        return
+    try:
+        conn = _connect()
+        conn.execute("""
+            INSERT INTO macro_forward (timestamp, ny_fed_prob, stl_prob, nfci, anfci)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            datetime.now().isoformat(),
+            data.get("ny_fed_recession_pct"),
+            data.get("stl_recession_pct"),
+            data.get("nfci"),
+            data.get("anfci"),
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        print(f"[history_db] macro_forward write error: {exc}")
 
 
 def log_snapshot(

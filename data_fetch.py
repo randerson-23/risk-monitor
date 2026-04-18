@@ -693,6 +693,56 @@ def fetch_macro_data() -> dict:
     return result
 
 
+# ── Macro: forward-risk (recession prob + financial conditions) ───────────────
+
+def fetch_forward_risk_data() -> dict:
+    """FRED-driven forward-looking macro: NY Fed yield-curve recession prob,
+    St Louis Fed smoothed recession prob, Chicago Fed NFCI / ANFCI."""
+    from forecasting import ny_fed_recession_history
+
+    result: dict = {"timestamp": datetime.now()}
+
+    # NY Fed: derive from 10Y-3M spread series (DGS10 - DGS3MO).
+    try:
+        t10 = _fetch_fred_series("DGS10",  start="2000-01-01")
+        t3m = _fetch_fred_series("DGS3MO", start="2000-01-01")
+        if not t10.empty and not t3m.empty:
+            spread = (t10 - t3m).dropna()
+            prob_hist = ny_fed_recession_history(spread) * 100  # %
+            result["ny_fed_spread_pct"]   = round(float(spread.iloc[-1]), 3)
+            result["ny_fed_recession_pct"] = round(float(prob_hist.iloc[-1]), 1)
+            # Last 24 months as sparkline / chart
+            result["ny_fed_hist"] = prob_hist.tail(24 * 30)
+    except Exception as exc:
+        result["ny_fed_error"] = str(exc)
+
+    # St Louis Fed smoothed recession probability (monthly, %)
+    try:
+        rp = _fetch_fred_series("RECPROUSM156N", start="2000-01-01")
+        if not rp.empty:
+            result["stl_recession_pct"] = round(float(rp.iloc[-1]), 1)
+            result["stl_recession_hist"] = rp.tail(24)
+    except Exception as exc:
+        result["stl_error"] = str(exc)
+
+    # Chicago Fed Financial Conditions Index (weekly, z-score)
+    try:
+        nfci  = _fetch_fred_series("NFCI",  start="2010-01-01")
+        anfci = _fetch_fred_series("ANFCI", start="2010-01-01")
+        if not nfci.empty:
+            result["nfci"]      = round(float(nfci.iloc[-1]), 3)
+            result["nfci_12w"]  = (round(float(nfci.iloc[-1] - nfci.iloc[-12]), 3)
+                                   if len(nfci) >= 12 else None)
+            result["nfci_hist"] = nfci.tail(52 * 2)  # ~2y weekly
+        if not anfci.empty:
+            result["anfci"]      = round(float(anfci.iloc[-1]), 3)
+            result["anfci_hist"] = anfci.tail(52 * 2)
+    except Exception as exc:
+        result["nfci_error"] = str(exc)
+
+    return result
+
+
 # ── Sectors ───────────────────────────────────────────────────────────────────
 
 SECTOR_NAMES = {

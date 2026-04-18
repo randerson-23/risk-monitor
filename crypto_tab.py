@@ -8,8 +8,9 @@ from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QVBoxLayout, QWidget)
 
+from forecast_panel import VolForecastPanel
 from regime import compute_crypto_regime, compute_crypto_regime_history
-from widgets import COLORS, GaugeWidget, MetricCard, RegimeCard, regime_color
+from widgets import COLORS, GaugeWidget, MetricCard, RegimeCard, TearOffFrame, regime_color
 
 _CHART_OPTIONS = ["BTC Price", "30d Realized Vol", "Hash Rate", "Funding Rate", "Open Interest",
                   "MVRV", "Net Liquidity", "US M2", "BTC Dominance", "Rainbow Chart"]
@@ -76,7 +77,15 @@ class CryptoTab(QWidget):
         root.addLayout(self._build_top_row())
         root.addLayout(self._build_cards_row())
         root.addLayout(self._build_onchain_row())
-        root.addWidget(self._build_chart_panel(), stretch=1)
+
+        mid = QHBoxLayout()
+        mid.setSpacing(8)
+        mid.addWidget(TearOffFrame("crypto.chart", self._build_chart_panel(),
+                                    "Bitcoin Chart"), stretch=3)
+        self.vol_panel = VolForecastPanel("BTC Vol Forecast (GARCH)")
+        mid.addWidget(TearOffFrame("crypto.vol", self.vol_panel,
+                                    "BTC Vol Forecast"), stretch=2)
+        root.addLayout(mid, stretch=1)
 
     def _build_top_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -255,6 +264,9 @@ class CryptoTab(QWidget):
         return frame
 
     # ── Data update ────────────────────────────────────────────────────────────
+
+    def update_forecast(self, fc: dict) -> None:
+        self.vol_panel.update_forecast(fc, price_history=self._data.get("btc_hist"))
 
     def update_data(self, data: dict) -> None:
         self._data = data
