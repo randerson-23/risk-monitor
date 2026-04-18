@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
 
 from forecast_panel import VolForecastPanel
 from regime import compute_equity_regime, compute_equity_regime_history
-from widgets import COLORS, GaugeWidget, MetricCard, RegimeCard, TearOffFrame, regime_color
+from widgets import COLORS, RiskSentimentWidget, MetricCard, RegimeCard, TearOffFrame, regime_color
 
 # ── Chart metadata ─────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ class EquityTab(QWidget):
         self.regime_card = RegimeCard()
         row.addWidget(self.regime_card, stretch=1)
 
-        self.gauge = GaugeWidget("CNN Fear & Greed")
+        self.gauge = RiskSentimentWidget("CNN Fear & Greed")
         row.addWidget(self.gauge, stretch=2)
 
         row.addWidget(self._build_stats_panel(), stretch=1)

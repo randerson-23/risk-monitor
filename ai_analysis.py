@@ -301,3 +301,170 @@ def get_recent_analyses(limit: int = 20) -> list[dict]:
         return [dict(r) for r in reversed(rows)]
     except Exception:
         return []
+
+
+# ── Consumer Sentiment Analysis ───────────────────────────────────────────────
+
+def _ensure_sentiment_table():
+    """Create the consumer_sentiment_analyses table if it doesn't exist."""
+    try:
+        conn = sqlite3.connect(str(_DB_PATH))
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS consumer_sentiment_analyses (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp       TEXT NOT NULL,
+                response        TEXT NOT NULL,
+                sentiment_score TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
+def _save_sentiment_analysis(response_text: str, sentiment_score: str):
+    """Persist a consumer sentiment analysis to SQLite."""
+    try:
+        _ensure_sentiment_table()
+        conn = sqlite3.connect(str(_DB_PATH))
+        conn.execute(
+            "INSERT INTO consumer_sentiment_analyses (timestamp, response, sentiment_score) "
+            "VALUES (?, ?, ?)",
+            (datetime.now().isoformat(), response_text, sentiment_score),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        print(f"[ai_analysis] sentiment save error: {exc}")
+
+
+def _build_sentiment_system_prompt() -> str:
+    return """You are a macro risk analyst specializing in consumer and public sentiment analysis.
+Your role is to search recent news and synthesize how consumer fears and confidence are shaping economic risk.
+
+Focus areas:
+1. ECONOMY — consumer confidence, retail sales, housing, credit stress
+2. AI & JOB DISPLACEMENT — news about AI-driven layoffs, automation fears, white-collar job anxiety
+3. INFLATION — price pressures, cost-of-living, consumer purchasing power
+4. EMPLOYMENT — layoffs, hiring freezes, unemployment fears, gig economy stress
+
+After analyzing each area, provide:
+- OVERALL SENTIMENT SCORE: one of BEARISH, NEUTRAL, or BULLISH (from a risk perspective — BEARISH means elevated consumer fear which is risk-negative)
+- A concise 2-3 sentence summary per area
+- Key data points or headlines supporting each assessment
+
+End your response with a line exactly like this (no other text on that line):
+SENTIMENT_SCORE: BEARISH
+(or NEUTRAL or BULLISH)
+
+Be concise and data-driven. Cite specific headlines or statistics where available."""
+
+
+def run_sentiment_analysis() -> dict:
+    """
+    Call Anthropic API with web search to compile consumer sentiment.
+    Returns dict with keys: response (str), sentiment_score (str), timestamp (str).
+    """
+    if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == "your_anthropic_key_here":
+        return {
+            "response": ("⚠ ANTHROPIC_API_KEY not configured.\n\n"
+                         "Add your key to the .env file:\nANTHROPIC_API_KEY=sk-ant-..."),
+            "sentiment_score": "NEUTRAL",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    user_message = (
+        f"Today is {datetime.now().strftime('%Y-%m-%d')}. "
+        "Please search for the latest news and data on consumer sentiment across these four areas: "
+        "(1) broader economic conditions and consumer confidence, "
+        "(2) AI fears and job displacement concerns, "
+        "(3) inflation and cost-of-living pressures, "
+        "(4) job loss and unemployment fears. "
+        "Provide a structured analysis with an overall BEARISH/NEUTRAL/BULLISH score."
+    )
+
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": _MODEL,
+                "max_tokens": 2048,
+                "system": _build_sentiment_system_prompt(),
+                "tools": [{"type": "web_search_20250305", "name": "web_search"}],
+                "messages": [{"role": "user", "content": user_message}],
+            },
+            timeout=90,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        text_parts = []
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text_parts.append(block["text"])
+        result = "\n".join(text_parts) if text_parts else "No response received."
+
+        # Extract sentiment score from response
+        score = "NEUTRAL"
+        for line in result.splitlines():
+            if line.strip().startswith("SENTIMENT_SCORE:"):
+                raw = line.split(":", 1)[1].strip().upper()
+                if raw in ("BEARISH", "NEUTRAL", "BULLISH"):
+                    score = raw
+                break
+
+        _save_sentiment_analysis(result, score)
+
+        return {
+            "response": result,
+            "sentiment_score": score,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    except requests.exceptions.Timeout:
+        return {
+            "response": "⚠ Request timed out. Try again in a moment.",
+            "sentiment_score": "NEUTRAL",
+            "timestamp": datetime.now().isoformat(),
+        }
+    except requests.exceptions.HTTPError as exc:
+        status = exc.response.status_code if exc.response else "?"
+        body = exc.response.text[:300] if exc.response else ""
+        return {
+            "response": f"⚠ API error (HTTP {status}):\n{body}",
+            "sentiment_score": "NEUTRAL",
+            "timestamp": datetime.now().isoformat(),
+        }
+    except Exception as exc:
+        return {
+            "response": f"⚠ Sentiment analysis failed: {exc}",
+            "sentiment_score": "NEUTRAL",
+            "timestamp": datetime.now().isoformat(),
+        }
+
+
+def get_recent_sentiment_analyses(limit: int = 10) -> list[dict]:
+    """Return recent consumer sentiment analyses from the database."""
+    try:
+        _ensure_sentiment_table()
+        conn = sqlite3.connect(str(_DB_PATH))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM consumer_sentiment_analyses ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def get_latest_sentiment() -> dict | None:
+    """Return the most recent consumer sentiment analysis, or None."""
+    results = get_recent_sentiment_analyses(limit=1)
+    return results[0] if results else None

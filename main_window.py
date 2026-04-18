@@ -15,9 +15,10 @@ from macro_tab import MacroTab
 from notifications import NotificationManager, ToastWidget
 from portfolio_tab import PortfolioTab
 from sectors_tab import SectorsTab
+from sentiment_tab import SentimentTab
 from widgets import COLORS, HeaderRegimeBadge, LatencyDot
 from workers import (CryptoWorker, EquityWorker, ForecastWorker, MacroForwardWorker,
-                       MacroWorker, SectorWorker)
+                       MacroWorker, SectorWorker, SentimentWorker)
 
 _REFRESH_MS = 5 * 60 * 1000  # 5 minutes
 _MIN_FONT = 7
@@ -190,7 +191,11 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.macro_tab,     "Macro")
         self.tabs.addTab(self.portfolio_tab, "Portfolio")
         self.tabs.addTab(self.sectors_tab,   "Sectors")
+        self.sentiment_tab = SentimentTab()
+        self.sentiment_tab.analysis_requested.connect(self._run_sentiment_analysis)
+        self.tabs.addTab(self.sentiment_tab, "Consumer Sentiment")
         self.claude_tab = ClaudeTab()
+        self.claude_tab.followup_requested.connect(self._on_followup_request)
         self.tabs.addTab(self.claude_tab,    "Claude")
         self.tabs.setIconSize(QSize(14, 14))
         content_row.addWidget(self.tabs, stretch=1)
@@ -320,8 +325,58 @@ class MainWindow(QMainWindow):
     def _on_claude_done(self, *args):
         self.btn_claude.setEnabled(True)
         self.btn_claude.setText("🤖  Ask Claude")
-        # Refresh the Claude history tab so the new response appears
         self.claude_tab.reload()
+
+    # ── Follow-up from Claude tab ──────────────────────────────────────────────
+
+    def _on_followup_request(self, text: str):
+        """Called when the user submits a follow-up in the Claude tab."""
+        snap = self.portfolio_tab.get_snapshot_data()
+        if snap is None:
+            self.claude_tab.on_followup_error()
+            return
+
+        equity_data = self.equity_tab._data if hasattr(self.equity_tab, "_data") else {}
+        crypto_data = self.crypto_tab._data if hasattr(self.crypto_tab, "_data") else {}
+        macro_data  = self.macro_tab._data if hasattr(self.macro_tab, "_data") else {}
+
+        self._ai_panel.request_analysis(snap, equity_data, crypto_data, macro_data,
+                                        user_context=text,
+                                        sector_data=self._sector_data or None)
+
+        panel = self._ai_panel
+        if panel._worker is not None:
+            panel._worker.finished.connect(self._on_followup_done)
+            panel._worker.error.connect(self._on_followup_failed)
+
+    def _on_followup_done(self, *args):
+        self.claude_tab.on_followup_complete()
+
+    def _on_followup_failed(self, *args):
+        self.claude_tab.on_followup_error()
+
+    # ── Consumer sentiment ─────────────────────────────────────────────────────
+
+    def _run_sentiment_analysis(self):
+        """Start the sentiment worker when the tab requests it."""
+        if self._sentiment_worker.isRunning():
+            return
+        self._sentiment_worker.start()
+
+    def _on_sentiment_data(self, result: dict):
+        self.sentiment_tab.on_analysis_complete(result)
+        # Feed the score into the regime badge as a fifth source
+        score = result.get("sentiment_score", "NEUTRAL").upper()
+        regime_map = {
+            "BULLISH": ("RISK-ON",  COLORS["risk_on"]),
+            "NEUTRAL": ("NEUTRAL",  COLORS["neutral"]),
+            "BEARISH": ("RISK-OFF", COLORS["risk_off"]),
+        }
+        regime, color = regime_map.get(score, ("NEUTRAL", COLORS["neutral"]))
+        self.regime_badge.update_regime("sentiment", regime, color)
+
+    def _on_sentiment_error(self, msg: str):
+        self.sentiment_tab.on_analysis_error(msg)
 
     # ── Font scaling (Ctrl+Plus / Ctrl+Minus / Ctrl+0) ──────────────────────────
 
@@ -383,6 +438,10 @@ class MainWindow(QMainWindow):
         self._fwd_worker = MacroForwardWorker()
         self._fwd_worker.data_ready.connect(self._on_forward_data)
         self._fwd_worker.error.connect(lambda e: self._on_error("forward", e))
+
+        self._sentiment_worker = SentimentWorker()
+        self._sentiment_worker.data_ready.connect(self._on_sentiment_data)
+        self._sentiment_worker.error.connect(self._on_sentiment_error)
 
         # GARCH forecast workers — spawned per refresh, keyed by tag
         self._fc_workers: dict[str, ForecastWorker] = {}

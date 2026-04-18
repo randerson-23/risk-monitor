@@ -100,6 +100,81 @@ class GaugeWidget(QWidget):
         p.drawText(QRectF(cx + radius - 42, cy - 14, 44, 16), Qt.AlignmentFlag.AlignCenter, "Greed")
 
 
+# ── RiskSentimentWidget ───────────────────────────────────────────────────────
+
+class RiskSentimentWidget(QWidget):
+    """
+    Replaces the speedometer gauge with a clean Risk On / Risk Off indicator.
+    Shows the sentiment score, label, and a colour-coded risk signal.
+    """
+
+    def __init__(self, title: str = "Fear & Greed", parent=None):
+        super().__init__(parent)
+        self.title = title
+        self._value: float | None = None
+        self._label: str = ""
+        self.setMinimumSize(250, 160)
+
+    def set_value(self, value: float, label: str = "") -> None:
+        self._value = value
+        self._label = label
+        self.update()
+
+    def _risk_state(self):
+        """Return (text, color) for the current value."""
+        if self._value is None:
+            return "—", COLORS["na"]
+        if self._value >= 60:
+            return "RISK ON", COLORS["risk_on"]
+        if self._value <= 40:
+            return "RISK OFF", COLORS["risk_off"]
+        return "NEUTRAL", COLORS["neutral"]
+
+    def paintEvent(self, _event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w, h = self.width(), self.height()
+
+        # Background card
+        p.setBrush(QBrush(QColor(COLORS["card_bg"])))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(1, 1, w - 2, h - 2, 8, 8)
+
+        # Title
+        p.setPen(QPen(QColor(COLORS["text_secondary"])))
+        p.setFont(ui_font(11))
+        p.drawText(QRectF(0, 10, w, 18), Qt.AlignmentFlag.AlignCenter, self.title)
+
+        state_text, state_color = self._risk_state()
+
+        # Coloured pill background
+        pill_w, pill_h = min(w - 40, 200), 48
+        pill_x = (w - pill_w) / 2
+        pill_y = (h - pill_h) / 2 - 4
+
+        bg_color = QColor(state_color)
+        bg_color.setAlpha(30)
+        p.setBrush(QBrush(bg_color))
+        p.setPen(QPen(QColor(state_color), 1.5))
+        p.drawRoundedRect(QRectF(pill_x, pill_y, pill_w, pill_h), 8, 8)
+
+        # State text inside pill
+        p.setPen(QPen(QColor(state_color)))
+        p.setFont(ui_font(20, bold=True))
+        p.drawText(QRectF(pill_x, pill_y, pill_w, pill_h),
+                   Qt.AlignmentFlag.AlignCenter, state_text)
+
+        # Score and label below pill
+        val_str = f"{int(self._value)}" if self._value is not None else "—"
+        sub = f"{val_str}  ·  {self._label}" if self._label else val_str
+
+        p.setPen(QPen(QColor(COLORS["text_secondary"])))
+        p.setFont(ui_font(11))
+        p.drawText(QRectF(0, pill_y + pill_h + 8, w, 18),
+                   Qt.AlignmentFlag.AlignCenter, sub)
+
+
 # ── RegimeCard ────────────────────────────────────────────────────────────────
 
 class RegimeCard(QWidget):
