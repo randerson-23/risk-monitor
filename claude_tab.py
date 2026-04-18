@@ -1,18 +1,19 @@
 """
-Claude tab — browse historical AI analyses.
+Claude tab — browse historical AI analyses and send follow-up questions.
 
 Left pane: date list (most recent at top), grouped by day.
 Right pane: responses for the selected date, most recent at top,
 separated by horizontal lines with timestamps.
+Bottom: follow-up question input that re-uses the main analysis pipeline.
 """
 
 from collections import OrderedDict
 from datetime import datetime
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QListWidget,
-                              QListWidgetItem, QScrollArea, QSizePolicy,
-                              QSplitter, QVBoxLayout, QWidget)
+                              QListWidgetItem, QPushButton, QScrollArea,
+                              QSizePolicy, QTextEdit, QVBoxLayout, QWidget)
 
 from ai_analysis import get_recent_analyses
 from widgets import COLORS
@@ -38,7 +39,6 @@ def _format_time(iso_str: str) -> str:
         dt = datetime.fromisoformat(iso_str)
         return dt.strftime("%-I:%M %p") if hasattr(dt, "hour") else iso_str
     except Exception:
-        # Windows strftime doesn't support %-I
         try:
             dt = datetime.fromisoformat(iso_str)
             return dt.strftime("%I:%M %p").lstrip("0")
@@ -55,6 +55,10 @@ def _date_key(iso_str: str) -> str:
 
 
 class ClaudeTab(QWidget):
+    # Emitted when the user submits a follow-up question.
+    # MainWindow connects this to trigger a new analysis with user_context set.
+    followup_requested = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._analyses_by_date: OrderedDict[str, list[dict]] = OrderedDict()
@@ -81,7 +85,6 @@ class ClaudeTab(QWidget):
         left_lay.setContentsMargins(0, 0, 0, 0)
         left_lay.setSpacing(0)
 
-        # Header
         hdr = QLabel("  ANALYSIS HISTORY")
         hdr.setFixedHeight(38)
         hdr.setStyleSheet(
@@ -118,7 +121,6 @@ class ClaudeTab(QWidget):
         self._date_list.currentRowChanged.connect(self._on_date_selected)
         left_lay.addWidget(self._date_list, stretch=1)
 
-        # Empty state label
         self._empty_label = QLabel("No analyses yet.\nClick 'Ask Claude' to generate one.")
         self._empty_label.setStyleSheet(
             f"color: {COLORS['text_secondary']}; font-size: 14px; "
@@ -130,7 +132,7 @@ class ClaudeTab(QWidget):
 
         root.addWidget(left_frame)
 
-        # ── Right pane: response content ──────────────────────────────────────
+        # ── Right pane: response content + follow-up input ────────────────────
 
         right_frame = QFrame()
         right_frame.setStyleSheet(f"background: {COLORS['bg']}; border: none;")
@@ -154,8 +156,78 @@ class ClaudeTab(QWidget):
         self._content_layout.addStretch()
 
         scroll.setWidget(self._content_widget)
-        right_lay.addWidget(scroll)
+        right_lay.addWidget(scroll, stretch=1)
 
+        # ── Follow-up input bar ───────────────────────────────────────────────
+
+        followup_frame = QFrame()
+        followup_frame.setStyleSheet(
+            f"background: {COLORS['card_bg']}; "
+            f"border-top: 1px solid {COLORS['card_border']}; border-radius: 0;"
+        )
+        followup_lay = QVBoxLayout(followup_frame)
+        followup_lay.setContentsMargins(16, 10, 16, 10)
+        followup_lay.setSpacing(6)
+
+        followup_hdr = QLabel("FOLLOW-UP QUESTION")
+        followup_hdr.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: 12px; "
+            f"font-weight: bold; letter-spacing: 1px; border: none;"
+        )
+        followup_lay.addWidget(followup_hdr)
+
+        input_row = QHBoxLayout()
+        input_row.setSpacing(8)
+
+        self._followup_input = QTextEdit()
+        self._followup_input.setFixedHeight(64)
+        self._followup_input.setPlaceholderText(
+            "Ask a follow-up question about current conditions…"
+        )
+        self._followup_input.setStyleSheet(f"""
+            QTextEdit {{
+                background: {COLORS['bg']};
+                color: {COLORS['text_primary']};
+                border: 1px solid {COLORS['card_border']};
+                border-radius: 6px;
+                font-size: 14px;
+                padding: 6px 8px;
+            }}
+            QTextEdit:focus {{
+                border-color: {COLORS['accent']};
+            }}
+        """)
+        input_row.addWidget(self._followup_input, stretch=1)
+
+        self._btn_send = QPushButton("Send")
+        self._btn_send.setFixedSize(72, 64)
+        self._btn_send.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {COLORS['accent']};
+                border: 1px solid {COLORS['accent']};
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {COLORS['accent']}; color: {COLORS['bg']}; }}
+            QPushButton:disabled {{
+                color: {COLORS['text_secondary']};
+                border-color: {COLORS['card_border']};
+            }}
+        """)
+        self._btn_send.clicked.connect(self._on_send_followup)
+        input_row.addWidget(self._btn_send)
+
+        followup_lay.addLayout(input_row)
+
+        self._followup_status = QLabel("")
+        self._followup_status.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: 12px; border: none;"
+        )
+        followup_lay.addWidget(self._followup_status)
+
+        right_lay.addWidget(followup_frame)
         root.addWidget(right_frame, stretch=1)
 
     def showEvent(self, event):
@@ -167,7 +239,6 @@ class ClaudeTab(QWidget):
         """Fetch analyses from SQLite and rebuild the date list."""
         raw = get_recent_analyses(limit=200)
 
-        # Group by date, most recent date first
         grouped: dict[str, list[dict]] = {}
         for entry in raw:
             dk = _date_key(entry.get("timestamp", ""))
@@ -175,7 +246,6 @@ class ClaudeTab(QWidget):
                 grouped[dk] = []
             grouped[dk].append(entry)
 
-        # Sort dates descending, responses within each date descending
         sorted_dates = sorted(grouped.keys(), reverse=True)
         self._analyses_by_date = OrderedDict()
         for dk in sorted_dates:
@@ -184,7 +254,6 @@ class ClaudeTab(QWidget):
                              reverse=True)
             self._analyses_by_date[dk] = entries
 
-        # Rebuild date list
         self._date_list.blockSignals(True)
         self._date_list.clear()
 
@@ -197,7 +266,6 @@ class ClaudeTab(QWidget):
         self._empty_label.hide()
 
         for dk, entries in self._analyses_by_date.items():
-            # Use the first entry's timestamp for the display label
             label = _format_date_label(entries[0].get("timestamp", dk))
             count = len(entries)
             display = f"{label}  ({count})" if count > 1 else label
@@ -208,42 +276,34 @@ class ClaudeTab(QWidget):
 
         self._date_list.blockSignals(False)
 
-        # Select the first (most recent) date
         if self._date_list.count() > 0:
             self._date_list.setCurrentRow(0)
 
     def _on_date_selected(self, row: int):
-        """Display responses for the selected date."""
         if row < 0:
             return
-
         item = self._date_list.item(row)
         if item is None:
             return
-
         dk = item.data(Qt.ItemDataRole.UserRole)
         entries = self._analyses_by_date.get(dk, [])
         self._render_responses(entries)
 
     def _clear_content(self):
-        """Remove all widgets from the content area."""
         while self._content_layout.count():
             child = self._content_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
 
     def _render_responses(self, entries: list[dict]):
-        """Render all responses for a date, most recent at top, with dividers."""
         self._clear_content()
 
         for i, entry in enumerate(entries):
             if i > 0:
-                # Horizontal divider between responses
                 divider = QFrame()
                 divider.setFixedHeight(1)
                 divider.setStyleSheet(
-                    f"background-color: {COLORS['accent']}; border: none; "
-                    f"margin: 0px;"
+                    f"background-color: {COLORS['accent']}; border: none; margin: 0px;"
                 )
                 spacer_top = QWidget()
                 spacer_top.setFixedHeight(16)
@@ -255,7 +315,6 @@ class ClaudeTab(QWidget):
                 self._content_layout.addWidget(divider)
                 self._content_layout.addWidget(spacer_bot)
 
-            # Timestamp header
             ts_str = entry.get("timestamp", "")
             time_display = _format_time(ts_str)
             date_display = _format_date_label(ts_str)
@@ -272,7 +331,6 @@ class ClaudeTab(QWidget):
             spacer.setStyleSheet("border: none;")
             self._content_layout.addWidget(spacer)
 
-            # Response body — use QLabel with word wrap for markdown-ish display
             response_text = entry.get("response", "")
             body = QLabel(response_text)
             body.setWordWrap(True)
@@ -290,6 +348,43 @@ class ClaudeTab(QWidget):
             self._content_layout.addWidget(body)
 
         self._content_layout.addStretch()
-
-        # Scroll to top
         self._content_widget.adjustSize()
+
+    # ── Follow-up handling ────────────────────────────────────────────────────
+
+    def _on_send_followup(self):
+        text = self._followup_input.toPlainText().strip()
+        if not text:
+            return
+        self.set_loading(True)
+        self.followup_requested.emit(text)
+
+    def set_loading(self, loading: bool):
+        """Called by MainWindow to toggle the loading state."""
+        self._btn_send.setEnabled(not loading)
+        self._btn_send.setText("…" if loading else "Send")
+        if loading:
+            self._followup_status.setText("⏳  Sending to Claude…")
+            self._followup_status.setStyleSheet(
+                f"color: {COLORS['neutral']}; font-size: 12px; border: none;"
+            )
+        else:
+            self._followup_status.setText("")
+
+    def on_followup_complete(self):
+        """Called by MainWindow when the follow-up analysis finishes."""
+        self.set_loading(False)
+        self._followup_input.clear()
+        self._followup_status.setText("✓  Response received")
+        self._followup_status.setStyleSheet(
+            f"color: {COLORS['risk_on']}; font-size: 12px; border: none;"
+        )
+        self.reload()
+
+    def on_followup_error(self):
+        """Called by MainWindow when the follow-up analysis fails."""
+        self.set_loading(False)
+        self._followup_status.setText("⚠  Request failed — check API key")
+        self._followup_status.setStyleSheet(
+            f"color: {COLORS['risk_off']}; font-size: 12px; border: none;"
+        )

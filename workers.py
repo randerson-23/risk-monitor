@@ -61,6 +61,20 @@ class MacroForwardWorker(QThread):
             self.error.emit(str(exc))
 
 
+class SentimentWorker(QThread):
+    """Runs consumer sentiment analysis via Anthropic API with web search."""
+    data_ready = pyqtSignal(dict)   # {response, sentiment_score, timestamp}
+    error = pyqtSignal(str)
+
+    def run(self):
+        try:
+            from ai_analysis import run_sentiment_analysis
+            result = run_sentiment_analysis()
+            self.data_ready.emit(result)
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
 class ForecastWorker(QThread):
     """CPU-bound GARCH fit; emits {'tag': 'spx', 'forecast': {...}}."""
     data_ready = pyqtSignal(dict)

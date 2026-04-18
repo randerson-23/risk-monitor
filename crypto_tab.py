@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
 
 from forecast_panel import VolForecastPanel
 from regime import compute_crypto_regime, compute_crypto_regime_history
-from widgets import COLORS, GaugeWidget, MetricCard, RegimeCard, TearOffFrame, regime_color
+from widgets import COLORS, RiskSentimentWidget, MetricCard, RegimeCard, TearOffFrame, regime_color
 
 _CHART_OPTIONS = ["BTC Price", "30d Realized Vol", "Hash Rate", "Funding Rate", "Open Interest",
                   "MVRV", "Net Liquidity", "US M2", "BTC Dominance", "Rainbow Chart"]
@@ -94,7 +94,7 @@ class CryptoTab(QWidget):
         self.regime_card = RegimeCard()
         row.addWidget(self.regime_card, stretch=1)
 
-        self.gauge = GaugeWidget("Crypto Fear & Greed")
+        self.gauge = RiskSentimentWidget("Crypto Fear & Greed")
         row.addWidget(self.gauge, stretch=2)
 
         row.addWidget(self._build_stats_panel(), stretch=1)
