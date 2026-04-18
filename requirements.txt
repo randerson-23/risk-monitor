@@ -6,3 +6,5 @@ numpy>=1.24.0
 requests>=2.31.0
 pandas-datareader>=0.10.0
 python-dotenv>=1.0.0
+arch>=6.3.0
+fredapi>=0.5.2

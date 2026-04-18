@@ -1,6 +1,6 @@
 import os
 
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtCore import Qt, QSize, QSettings, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PyQt6.QtWidgets import (QApplication, QDialog, QDialogButtonBox,
                               QHBoxLayout, QLabel, QMainWindow, QPushButton,
@@ -10,13 +10,14 @@ from ai_panel import AIPanel
 from claude_tab import ClaudeTab
 from crypto_tab import CryptoTab
 from equity_tab import EquityTab
-from history_db import log_snapshot
+from history_db import log_macro_forward, log_snapshot, log_vol_forecast
 from macro_tab import MacroTab
 from notifications import NotificationManager, ToastWidget
 from portfolio_tab import PortfolioTab
 from sectors_tab import SectorsTab
-from widgets import COLORS
-from workers import CryptoWorker, EquityWorker, MacroWorker, SectorWorker
+from widgets import COLORS, HeaderRegimeBadge, LatencyDot
+from workers import (CryptoWorker, EquityWorker, ForecastWorker, MacroForwardWorker,
+                       MacroWorker, SectorWorker)
 
 _REFRESH_MS = 5 * 60 * 1000  # 5 minutes
 _MIN_FONT = 7
@@ -103,14 +104,33 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Risk Monitor")
         self.setMinimumSize(1060, 780)
         self._pending = set()
-        self._font_size = _DEFAULT_FONT
         self._sector_data: dict = {}
+        self._settings = QSettings("RiskMonitor", "Dashboard")
+        self._font_size = int(self._settings.value("ui/font_size", _DEFAULT_FONT))
         self._setup_ui()
         self._setup_font_shortcuts()
         self._setup_notifications()
         self._setup_workers()
         self._setup_timer()
+        self._restore_window()
+        self._apply_font()
         self.refresh_all()
+
+    def _restore_window(self) -> None:
+        geom = self._settings.value("ui/geometry")
+        if geom is not None:
+            try:
+                self.restoreGeometry(geom)
+            except Exception:
+                pass
+
+    def closeEvent(self, event):
+        try:
+            self._settings.setValue("ui/geometry", self.saveGeometry())
+            self._settings.setValue("ui/font_size", self._font_size)
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     # ── UI ─────────────────────────────────────────────────────────────────────
 
@@ -195,7 +215,21 @@ class MainWindow(QMainWindow):
             f"color: {COLORS['text_primary']}; font-size: 15px; font-weight: bold; letter-spacing: 2px;"
         )
         lay.addWidget(title)
+
+        # Aggregate regime badge (right of title)
+        self.regime_badge = HeaderRegimeBadge()
+        lay.addSpacing(12)
+        lay.addWidget(self.regime_badge)
+
         lay.addStretch()
+
+        # Latency dots — one per data source
+        self._latency_dots: dict[str, LatencyDot] = {}
+        for src in ("equity", "crypto", "macro", "sectors"):
+            dot = LatencyDot(src)
+            self._latency_dots[src] = dot
+            lay.addWidget(dot)
+            lay.addSpacing(6)
 
         self.lbl_updated = QLabel("Not yet loaded")
         self.lbl_updated.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 15px;")
@@ -346,11 +380,28 @@ class MainWindow(QMainWindow):
         self._sec_worker.data_ready.connect(self._on_sector_data)
         self._sec_worker.error.connect(lambda e: self._on_error("sectors", e))
 
+        self._fwd_worker = MacroForwardWorker()
+        self._fwd_worker.data_ready.connect(self._on_forward_data)
+        self._fwd_worker.error.connect(lambda e: self._on_error("forward", e))
+
+        # GARCH forecast workers — spawned per refresh, keyed by tag
+        self._fc_workers: dict[str, ForecastWorker] = {}
+
     def _setup_timer(self):
         self._timer = QTimer(self)
         self._timer.setInterval(_REFRESH_MS)
         self._timer.timeout.connect(self.refresh_all)
         self._timer.start()
+
+        # 1s ticker drives latency-dot color transitions even between refreshes
+        self._latency_timer = QTimer(self)
+        self._latency_timer.setInterval(1000)
+        self._latency_timer.timeout.connect(self._tick_latency_dots)
+        self._latency_timer.start()
+
+    def _tick_latency_dots(self):
+        for dot in self._latency_dots.values():
+            dot.tick()
 
     # ── Refresh ────────────────────────────────────────────────────────────────
 
@@ -378,35 +429,78 @@ class MainWindow(QMainWindow):
             self._pending.add("sectors")
             self._sec_worker.start()
 
+        if not self._fwd_worker.isRunning():
+            self._pending.add("forward")
+            self._fwd_worker.start()
+
     def _on_equity_data(self, data: dict):
         self._pending.discard("equity")
+        self._latency_dots["equity"].mark()
         self.equity_tab.update_data(data)
         from regime import compute_equity_regime
         r = compute_equity_regime(data)
         self.tabs.setTabIcon(self.tabs.indexOf(self.equity_tab),
                              self._regime_dot_icon(r["color"]))
+        self.regime_badge.update_regime("equity", r["regime"], r["color"])
+        self._spawn_forecast("spx", data.get("spx_hist"))
         self._finish_if_done(data.get("timestamp"))
 
     def _on_crypto_data(self, data: dict):
         self._pending.discard("crypto")
+        self._latency_dots["crypto"].mark()
         self.crypto_tab.update_data(data)
         from regime import compute_crypto_regime
         r = compute_crypto_regime(data)
         self.tabs.setTabIcon(self.tabs.indexOf(self.crypto_tab),
                              self._regime_dot_icon(r["color"]))
+        self.regime_badge.update_regime("crypto", r["regime"], r["color"])
+        self._spawn_forecast("btc", data.get("btc_hist"))
         self._finish_if_done(data.get("timestamp"))
+
+    def _on_forward_data(self, data: dict):
+        self._pending.discard("forward")
+        self.macro_tab.update_forward_risk(data)
+        log_macro_forward(data)
+        # Latency dot piggybacks on the macro source
+        self._latency_dots["macro"].mark()
+        self._finish_if_done(data.get("timestamp"))
+
+    def _spawn_forecast(self, tag: str, prices) -> None:
+        if prices is None or len(prices) < 250:
+            return
+        existing = self._fc_workers.get(tag)
+        if existing is not None and existing.isRunning():
+            return
+        w = ForecastWorker(tag, prices)
+        w.data_ready.connect(self._on_forecast_ready)
+        w.error.connect(lambda e: print(f"[forecast] {e}"))
+        self._fc_workers[tag] = w
+        w.start()
+
+    def _on_forecast_ready(self, payload: dict) -> None:
+        tag = payload.get("tag")
+        fc  = payload.get("forecast", {})
+        if tag == "spx":
+            self.equity_tab.update_forecast(fc)
+            log_vol_forecast("SPX", fc)
+        elif tag == "btc":
+            self.crypto_tab.update_forecast(fc)
+            log_vol_forecast("BTC", fc)
 
     def _on_macro_data(self, data: dict):
         self._pending.discard("macro")
+        self._latency_dots["macro"].mark()
         self.macro_tab.update_data(data)
         from regime import compute_macro_regime
         r = compute_macro_regime(data)
         self.tabs.setTabIcon(self.tabs.indexOf(self.macro_tab),
                              self._regime_dot_icon(r["color"]))
+        self.regime_badge.update_regime("macro", r["regime"], r["color"])
         self._finish_if_done(data.get("timestamp"))
 
     def _on_sector_data(self, data: dict):
         self._pending.discard("sectors")
+        self._latency_dots["sectors"].mark()
         self._sector_data = data
         self.sectors_tab.update_data(data)
         rot = data.get("rotation_regime", "MIXED")
