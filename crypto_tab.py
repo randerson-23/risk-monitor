@@ -9,7 +9,8 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QVBoxLayout, QWidget)
 
 from regime import compute_crypto_regime, compute_crypto_regime_history
-from widgets import COLORS, GaugeWidget, MetricCard, RegimeCard, regime_color
+from widgets import (COLORS, GaugeWidget, MetricCard, RegimeCard,
+                     apply_font_delta_offset, font_delta, fs, regime_color)
 
 _CHART_OPTIONS = ["BTC Price", "30d Realized Vol", "Hash Rate", "Funding Rate", "Open Interest",
                   "MVRV", "Net Liquidity", "US M2", "BTC Dominance", "Rainbow Chart"]
@@ -103,13 +104,13 @@ class CryptoTab(QWidget):
 
         hdr = QLabel("INDICATORS")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             return l
 
         self.lbl_btc_ma  = _lbl("BTC vs 200MA: —")
@@ -119,11 +120,12 @@ class CryptoTab(QWidget):
         self.lbl_mom90   = _lbl("90d Momentum: —")
         self.lbl_dom     = _lbl("BTC Dominance: —")
         self.lbl_rv      = _lbl("30d Realized Vol: —")
+        self.lbl_btc_vf  = _lbl("BTC Vol Forecast: —")
         self.lbl_mvrv    = _lbl("MVRV: —")
 
         for l in (self.lbl_btc_ma, self.lbl_btc_wma, self.lbl_ath,
                   self.lbl_pi, self.lbl_mom90, self.lbl_dom, self.lbl_rv,
-                  self.lbl_mvrv):
+                  self.lbl_btc_vf, self.lbl_mvrv):
             lay.addWidget(l)
         lay.addStretch()
         return frame
@@ -136,8 +138,10 @@ class CryptoTab(QWidget):
         self.card_fg     = MetricCard("FEAR & GREED")
         self.card_dom    = MetricCard("BTC DOM")
         self.card_rv     = MetricCard("REALIZED VOL")
+        self.card_btc_vf = MetricCard("BTC VOL FORECAST")
 
-        for c in (self.card_btc, self.card_fg, self.card_dom, self.card_rv):
+        for c in (self.card_btc, self.card_fg, self.card_dom, self.card_rv,
+                  self.card_btc_vf):
             row.addWidget(c)
         return row
 
@@ -160,13 +164,13 @@ class CryptoTab(QWidget):
 
         hdr = QLabel("NETWORK HEALTH")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             return l
 
         self.lbl_hash_rate       = _lbl("Hash Rate: —")
@@ -195,13 +199,13 @@ class CryptoTab(QWidget):
 
         hdr = QLabel("DERIVATIVES")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             return l
 
         self.lbl_funding_cur   = _lbl("Funding (current): —")
@@ -228,14 +232,14 @@ class CryptoTab(QWidget):
 
         ctrl = QHBoxLayout()
         lbl = QLabel("Chart:")
-        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         ctrl.addWidget(lbl)
 
         self.chart_selector = QComboBox()
         self.chart_selector.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 13px; }}"
+            f"padding: 2px 6px; font-size: {fs(13)}px; }}"
         )
         self.chart_selector.addItems(_CHART_OPTIONS)
         self.chart_selector.currentIndexChanged.connect(self._render_chart)
@@ -282,7 +286,7 @@ class CryptoTab(QWidget):
         pct   = d.get("btc_pct_from_200ma")
         if above is not None and pct is not None:
             c = COLORS["risk_on"] if above else COLORS["risk_off"]
-            self.lbl_btc_ma.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_btc_ma.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_btc_ma.setText(
                 f"BTC vs 200MA: {'ABOVE' if above else 'BELOW'} ({pct:+.1f}%)"
             )
@@ -291,7 +295,7 @@ class CryptoTab(QWidget):
         wma_pct   = d.get("btc_pct_from_wma200")
         if wma_above is not None and wma_pct is not None:
             c = COLORS["risk_on"] if wma_above else COLORS["risk_off"]
-            self.lbl_btc_wma.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_btc_wma.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_btc_wma.setText(
                 f"BTC vs 200WMA: {'ABOVE' if wma_above else 'BELOW'} ({wma_pct:+.1f}%)"
             )
@@ -302,7 +306,7 @@ class CryptoTab(QWidget):
             elif pct_ath < -35: c = COLORS["neutral"]
             elif pct_ath > -10: c = COLORS["risk_off"]
             else:               c = COLORS["text_primary"]
-            self.lbl_ath.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_ath.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_ath.setText(f"ATH Distance: {pct_ath:.1f}%")
 
         pi_ratio = d.get("btc_pi_ratio")
@@ -310,26 +314,32 @@ class CryptoTab(QWidget):
             if pi_ratio >= 0.97:   c = COLORS["risk_off"]
             elif pi_ratio >= 0.90: c = COLORS["neutral"]
             else:                  c = COLORS["risk_on"]
-            self.lbl_pi.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_pi.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_pi.setText(f"Pi Cycle: {pi_ratio:.3f}  (top > 1.0)")
 
         mom90 = d.get("btc_mom90")
         if mom90 is not None:
             c = COLORS["risk_on"] if mom90 > 20 else (COLORS["risk_off"] if mom90 < -20 else COLORS["neutral"])
-            self.lbl_mom90.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_mom90.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_mom90.setText(f"90d Momentum: {mom90:+.1f}%")
 
         dom = d.get("btc_dominance")
         if dom is not None:
             c = _dom_color(dom)
-            self.lbl_dom.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_dom.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_dom.setText(f"BTC Dominance: {dom:.1f}%")
 
         rv = d.get("btc_rv30")
         if rv is not None:
             c = _rv_color(rv)
-            self.lbl_rv.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_rv.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_rv.setText(f"30d Realized Vol: {rv:.1f}%")
+
+        vf = d.get("btc_vol_forecast")
+        if vf is not None:
+            c = _rv_color(vf)
+            self.lbl_btc_vf.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
+            self.lbl_btc_vf.setText(f"BTC Vol Forecast: {vf:.1f}%")
 
         mvrv = d.get("mvrv")
         if mvrv is not None:
@@ -338,7 +348,7 @@ class CryptoTab(QWidget):
             elif mvrv < 3.0: c = COLORS["neutral"]
             elif mvrv < 4.0: c = COLORS["risk_off"]
             else:             c = COLORS["risk_off"]
-            self.lbl_mvrv.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_mvrv.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_mvrv.setText(f"MVRV: {mvrv:.3f}")
 
     def _update_cards(self, d: dict) -> None:
@@ -362,6 +372,10 @@ class CryptoTab(QWidget):
         if rv is not None:
             self.card_rv.set_value(f"{rv:.1f}%", "annualized", _rv_color(rv))
 
+        vf = d.get("btc_vol_forecast")
+        if vf is not None:
+            self.card_btc_vf.set_value(f"{vf:.1f}%", "EWMA annualized", _rv_color(vf))
+
     def _update_network_labels(self, d: dict) -> None:
         hr = d.get("hash_rate")
         if hr is not None:
@@ -370,14 +384,14 @@ class CryptoTab(QWidget):
         hr_chg = d.get("hash_rate_pct_30d")
         if hr_chg is not None:
             c = COLORS["risk_on"] if hr_chg > 0 else (COLORS["risk_off"] if hr_chg < -10 else COLORS["neutral"])
-            self.lbl_hash_rate_trend.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_hash_rate_trend.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_hash_rate_trend.setText(f"30d Trend: {hr_chg:+.1f}%")
 
         diff_pct = d.get("difficulty_adj_pct")
         diff_eta = d.get("difficulty_adj_eta_days")
         if diff_pct is not None:
             c = COLORS["risk_on"] if diff_pct > 0 else COLORS["risk_off"]
-            self.lbl_difficulty.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_difficulty.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             eta_str = f"  (ETA {diff_eta:.0f}d)" if diff_eta is not None else ""
             self.lbl_difficulty.setText(f"Diff Adj: {diff_pct:+.1f}%{eta_str}")
 
@@ -390,7 +404,7 @@ class CryptoTab(QWidget):
         if liq is not None:
             c = COLORS["risk_on"] if (liq_chg or 0) > 0 else COLORS["risk_off"]
             chg_str = f"  ({liq_chg:+.1f}%)" if liq_chg is not None else ""
-            self.lbl_net_liq.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_net_liq.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_net_liq.setText(f"Net Liquidity: ${liq:,.0f}B{chg_str}")
 
         m2 = d.get("m2_usd")
@@ -398,7 +412,7 @@ class CryptoTab(QWidget):
         if m2 is not None:
             c = COLORS["risk_on"] if (m2_chg or 0) > 0 else COLORS["neutral"]
             chg_str = f"  ({m2_chg:+.1f}% 1Y)" if m2_chg is not None else ""
-            self.lbl_m2.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_m2.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_m2.setText(f"US M2: ${m2:,.0f}B{chg_str}")
 
     def _update_derivatives_labels(self, d: dict) -> None:
@@ -410,19 +424,19 @@ class CryptoTab(QWidget):
         fc = d.get("funding_rate_current")
         if fc is not None:
             c = _funding_color(fc)
-            self.lbl_funding_cur.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_funding_cur.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_funding_cur.setText(f"Funding (current): {fc:+.4f}%")
 
         fa = d.get("funding_rate_avg24h")
         if fa is not None:
             c = _funding_color(fa)
-            self.lbl_funding_avg.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_funding_avg.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_funding_avg.setText(f"Funding (24h avg): {fa:+.4f}%")
 
         ls = d.get("ls_ratio")
         if ls is not None:
             c = COLORS["risk_on"] if ls < 0.9 else (COLORS["risk_off"] if ls > 1.2 else COLORS["neutral"])
-            self.lbl_ls_ratio.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_ls_ratio.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_ls_ratio.setText(f"Long/Short Ratio: {ls:.3f}")
 
         oi = d.get("open_interest")
@@ -432,7 +446,7 @@ class CryptoTab(QWidget):
         oi_chg = d.get("oi_pct_change_30d")
         if oi_chg is not None:
             c = COLORS["risk_on"] if oi_chg > 0 else COLORS["risk_off"]
-            self.lbl_oi_trend.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_oi_trend.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_oi_trend.setText(f"OI 30d Change: {oi_chg:+.1f}%")
 
     def _store_chart_series(self, d: dict) -> None:

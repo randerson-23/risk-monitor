@@ -7,26 +7,32 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QVBoxLayout, QWidget)
 
 from regime import compute_macro_regime, compute_macro_regime_history
-from widgets import COLORS, MetricCard, RegimeCard, regime_color
+from widgets import (COLORS, MetricCard, RegimeCard,
+                     apply_font_delta_offset, font_delta, fs, regime_color)
 
 _CHART_OPTIONS = [
     "10Y Treasury", "Yield Curve", "DXY", "Gold", "Oil",
     "HYG Credit", "STLFSI4", "MOVE Index", "HY Spread",
     "5Y Breakeven", "10Y Real Yield",
+    "NFCI", "ANFCI", "Recession STL", "Recession NY Fed 12M",
 ]
 
 _CHART_COLORS = {
-    "10Y Treasury":   "#58a6ff",
-    "Yield Curve":    "#d29922",
-    "DXY":            "#e07b39",
-    "Gold":           "#ffd700",
-    "Oil":            "#7cb342",
-    "HYG Credit":     "#f85149",
-    "STLFSI4":        "#bc8cff",
-    "MOVE Index":     "#ff6b6b",
-    "HY Spread":      "#e07b39",
-    "5Y Breakeven":   "#4ecdc4",
-    "10Y Real Yield": "#45b7d1",
+    "10Y Treasury":         "#58a6ff",
+    "Yield Curve":          "#d29922",
+    "DXY":                  "#e07b39",
+    "Gold":                 "#ffd700",
+    "Oil":                  "#7cb342",
+    "HYG Credit":           "#f85149",
+    "STLFSI4":              "#bc8cff",
+    "MOVE Index":           "#ff6b6b",
+    "HY Spread":            "#e07b39",
+    "5Y Breakeven":         "#4ecdc4",
+    "10Y Real Yield":       "#45b7d1",
+    "NFCI":                 "#bc8cff",
+    "ANFCI":                "#a371f7",
+    "Recession STL":        "#f85149",
+    "Recession NY Fed 12M": "#e07b39",
 }
 
 
@@ -58,6 +64,19 @@ def _hy_spread_color(v: float) -> str:
     return COLORS["neutral"]
 
 
+def _nfci_color(v: float) -> str:
+    # NFCI: 0 = average, + = tighter-than-average, - = looser
+    if v > 0.5:  return COLORS["risk_off"]
+    if v < -0.5: return COLORS["risk_on"]
+    return COLORS["neutral"]
+
+
+def _recession_color(pct: float) -> str:
+    if pct > 50: return COLORS["risk_off"]
+    if pct > 25: return COLORS["neutral"]
+    return COLORS["risk_on"]
+
+
 class MacroTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,6 +96,7 @@ class MacroTab(QWidget):
         root.addLayout(self._build_top_row())
         root.addLayout(self._build_cards_row())
         root.addLayout(self._build_cards_row_2())
+        root.addLayout(self._build_cards_row_3())
         root.addWidget(self._build_chart_panel(), stretch=1)
 
     def _build_top_row(self) -> QHBoxLayout:
@@ -100,13 +120,13 @@ class MacroTab(QWidget):
 
         hdr = QLabel("INDICATORS")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             return l
 
         self.lbl_spread    = _lbl("Yield Curve: —")
@@ -121,11 +141,17 @@ class MacroTab(QWidget):
         self.lbl_hy_spread = _lbl("HY Credit Spread: —")
         self.lbl_breakeven = _lbl("5Y Breakeven: —")
         self.lbl_real_yld  = _lbl("10Y Real Yield: —")
+        self.lbl_nfci      = _lbl("FIN Conditions (NFCI): —")
+        self.lbl_anfci     = _lbl("Adj FIN Cond (ANFCI): —")
+        self.lbl_rec_ny    = _lbl("Recession NY Fed 12M: —")
+        self.lbl_rec_stl   = _lbl("Recession STL Smooth: —")
 
         for l in (self.lbl_spread, self.lbl_yield10, self.lbl_yield3m,
                   self.lbl_dxy, self.lbl_oil, self.lbl_gold, self.lbl_hyg,
                   self.lbl_stlfsi, self.lbl_move, self.lbl_hy_spread,
-                  self.lbl_breakeven, self.lbl_real_yld):
+                  self.lbl_breakeven, self.lbl_real_yld,
+                  self.lbl_nfci, self.lbl_anfci,
+                  self.lbl_rec_ny, self.lbl_rec_stl):
             lay.addWidget(l)
         lay.addStretch()
         return frame
@@ -162,6 +188,20 @@ class MacroTab(QWidget):
             row.addWidget(c)
         return row
 
+    def _build_cards_row_3(self) -> QHBoxLayout:
+        row = QHBoxLayout()
+        row.setSpacing(8)
+
+        self.card_nfci   = MetricCard("FIN COND NFCI")
+        self.card_anfci  = MetricCard("ADJ FIN COND ANFCI")
+        self.card_rec_ny = MetricCard("RECESSION NY FED 12M")
+        self.card_rec_st = MetricCard("RECESSION STL SMOOTH")
+
+        for c in (self.card_nfci, self.card_anfci,
+                  self.card_rec_ny, self.card_rec_st):
+            row.addWidget(c)
+        return row
+
     def _build_chart_panel(self) -> QFrame:
         frame = QFrame()
         frame.setStyleSheet(
@@ -174,14 +214,14 @@ class MacroTab(QWidget):
 
         ctrl = QHBoxLayout()
         lbl = QLabel("Chart:")
-        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         ctrl.addWidget(lbl)
 
         self.chart_selector = QComboBox()
         self.chart_selector.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 13px; }}"
+            f"padding: 2px 6px; font-size: {fs(13)}px; }}"
         )
         self.chart_selector.addItems(_CHART_OPTIONS)
         self.chart_selector.currentIndexChanged.connect(self._render_chart)
@@ -219,7 +259,7 @@ class MacroTab(QWidget):
         spread = d.get("yield_spread")
         if spread is not None:
             c = _spread_color(spread)
-            self.lbl_spread.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_spread.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             if spread < 0:     desc = "inverted"
             elif spread < 0.5: desc = "flat"
             elif spread < 1.5: desc = "normal"
@@ -229,7 +269,7 @@ class MacroTab(QWidget):
         y10 = d.get("yield_10y")
         if y10 is not None:
             c = _yield_color(y10)
-            self.lbl_yield10.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_yield10.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_yield10.setText(f"10Y Yield: {y10:.3f}%")
 
         y3m = d.get("yield_3m")
@@ -240,7 +280,7 @@ class MacroTab(QWidget):
         dxy_pct   = d.get("dxy_pct_from_200ma")
         if dxy_above is not None and dxy_pct is not None:
             c = _dxy_color(dxy_above)
-            self.lbl_dxy.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_dxy.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_dxy.setText(
                 f"DXY vs 200MA: {'ABOVE' if dxy_above else 'BELOW'} ({dxy_pct:+.1f}%)"
             )
@@ -249,7 +289,7 @@ class MacroTab(QWidget):
         oil_pct   = d.get("oil_pct_from_200ma")
         if oil_above is not None and oil_pct is not None:
             c = regime_color(oil_above)
-            self.lbl_oil.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_oil.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_oil.setText(
                 f"Oil vs 200MA: {'ABOVE' if oil_above else 'BELOW'} ({oil_pct:+.1f}%)"
             )
@@ -265,7 +305,7 @@ class MacroTab(QWidget):
         hyg_pct   = d.get("hyg_pct_from_200ma")
         if hyg_above is not None and hyg_pct is not None:
             c = COLORS["risk_on"] if hyg_above else COLORS["risk_off"]
-            self.lbl_hyg.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_hyg.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_hyg.setText(
                 f"HYG vs 200MA: {'ABOVE' if hyg_above else 'BELOW'} ({hyg_pct:+.1f}%)"
             )
@@ -276,32 +316,56 @@ class MacroTab(QWidget):
             elif stlfsi > 0:   c = COLORS["neutral"]
             elif stlfsi < -0.5: c = COLORS["risk_on"]
             else:               c = COLORS["text_primary"]
-            self.lbl_stlfsi.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_stlfsi.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_stlfsi.setText(f"Financial Stress: {stlfsi:+.3f}")
 
         move = d.get("move")
         if move is not None:
             c = _move_color(move)
-            self.lbl_move.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_move.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_move.setText(f"MOVE Index: {move:.0f}")
 
         hy_spread = d.get("hy_spread")
         if hy_spread is not None:
             c = _hy_spread_color(hy_spread)
-            self.lbl_hy_spread.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_hy_spread.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_hy_spread.setText(f"HY Credit Spread: {hy_spread:.2f}%")
 
         be5y = d.get("breakeven_5y")
         if be5y is not None:
             c = COLORS["risk_off"] if be5y > 3.0 else (COLORS["risk_on"] if be5y < 2.0 else COLORS["text_primary"])
-            self.lbl_breakeven.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_breakeven.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_breakeven.setText(f"5Y Breakeven: {be5y:.2f}%")
 
         real_yld = d.get("real_yield_10y")
         if real_yld is not None:
             c = COLORS["risk_off"] if real_yld > 2.5 else (COLORS["risk_on"] if real_yld < 1.0 else COLORS["text_primary"])
-            self.lbl_real_yld.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_real_yld.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_real_yld.setText(f"10Y Real Yield: {real_yld:.2f}%")
+
+        nfci = d.get("nfci")
+        if nfci is not None:
+            c = _nfci_color(nfci)
+            self.lbl_nfci.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
+            self.lbl_nfci.setText(f"FIN Conditions (NFCI): {nfci:+.3f}")
+
+        anfci = d.get("anfci")
+        if anfci is not None:
+            c = _nfci_color(anfci)
+            self.lbl_anfci.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
+            self.lbl_anfci.setText(f"Adj FIN Cond (ANFCI): {anfci:+.3f}")
+
+        rec_ny = d.get("recession_ny_fed12")
+        if rec_ny is not None:
+            c = _recession_color(rec_ny)
+            self.lbl_rec_ny.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
+            self.lbl_rec_ny.setText(f"Recession NY Fed 12M: {rec_ny:.1f}%")
+
+        rec_stl = d.get("recession_stl_smooth")
+        if rec_stl is not None:
+            c = _recession_color(rec_stl)
+            self.lbl_rec_stl.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
+            self.lbl_rec_stl.setText(f"Recession STL Smooth: {rec_stl:.1f}%")
 
     def _update_cards(self, d: dict) -> None:
         y10 = d.get("yield_10y")
@@ -368,19 +432,41 @@ class MacroTab(QWidget):
             c = COLORS["risk_off"] if real_yld > 2.5 else (COLORS["risk_on"] if real_yld < 1.0 else COLORS["text_primary"])
             self.card_real_yld.set_value(f"{real_yld:.2f}%", "TIPS yield", c)
 
+        nfci = d.get("nfci")
+        if nfci is not None:
+            desc = "tight" if nfci > 0.5 else ("loose" if nfci < -0.5 else "avg")
+            self.card_nfci.set_value(f"{nfci:+.2f}", desc, _nfci_color(nfci))
+
+        anfci = d.get("anfci")
+        if anfci is not None:
+            desc = "tight" if anfci > 0.5 else ("loose" if anfci < -0.5 else "avg")
+            self.card_anfci.set_value(f"{anfci:+.2f}", desc, _nfci_color(anfci))
+
+        rec_ny = d.get("recession_ny_fed12")
+        if rec_ny is not None:
+            self.card_rec_ny.set_value(f"{rec_ny:.1f}%", "12M ahead", _recession_color(rec_ny))
+
+        rec_stl = d.get("recession_stl_smooth")
+        if rec_stl is not None:
+            self.card_rec_st.set_value(f"{rec_stl:.1f}%", "smoothed", _recession_color(rec_stl))
+
     def _store_chart_series(self, d: dict) -> None:
         self._chart_series = {
-            "10Y Treasury":   d.get("yield_10y_hist"),
-            "Yield Curve":    d.get("yield_spread_hist"),
-            "DXY":            d.get("dxy_hist"),
-            "Gold":           d.get("gold_hist"),
-            "Oil":            d.get("oil_hist"),
-            "HYG Credit":     d.get("hyg_hist"),
-            "STLFSI4":        d.get("stlfsi_hist"),
-            "MOVE Index":     d.get("move_hist"),
-            "HY Spread":      d.get("hy_spread_hist"),
-            "5Y Breakeven":   d.get("breakeven_5y_hist"),
-            "10Y Real Yield": d.get("real_yield_10y_hist"),
+            "10Y Treasury":         d.get("yield_10y_hist"),
+            "Yield Curve":          d.get("yield_spread_hist"),
+            "DXY":                  d.get("dxy_hist"),
+            "Gold":                 d.get("gold_hist"),
+            "Oil":                  d.get("oil_hist"),
+            "HYG Credit":           d.get("hyg_hist"),
+            "STLFSI4":              d.get("stlfsi_hist"),
+            "MOVE Index":           d.get("move_hist"),
+            "HY Spread":            d.get("hy_spread_hist"),
+            "5Y Breakeven":         d.get("breakeven_5y_hist"),
+            "10Y Real Yield":       d.get("real_yield_10y_hist"),
+            "NFCI":                 d.get("nfci_hist"),
+            "ANFCI":                d.get("anfci_hist"),
+            "Recession STL":        d.get("recession_stl_smooth_hist"),
+            "Recession NY Fed 12M": d.get("recession_ny_fed12_hist"),
         }
 
     # ── Chart rendering ────────────────────────────────────────────────────────
@@ -435,6 +521,21 @@ class MacroTab(QWidget):
                 ))
         elif key == "HY Spread":
             for level, color in ((3.0, COLORS["risk_on"]), (5.0, COLORS["risk_off"])):
+                self.plot.addItem(pg.InfiniteLine(
+                    pos=level, angle=0,
+                    pen=pg.mkPen(color=color, width=1, style=Qt.PenStyle.DashLine)
+                ))
+        elif key in ("NFCI", "ANFCI"):
+            for level, color in ((0.0, COLORS["neutral"]),
+                                 (0.5, COLORS["risk_off"]),
+                                 (-0.5, COLORS["risk_on"])):
+                self.plot.addItem(pg.InfiniteLine(
+                    pos=level, angle=0,
+                    pen=pg.mkPen(color=color, width=1, style=Qt.PenStyle.DashLine)
+                ))
+        elif key in ("Recession STL", "Recession NY Fed 12M"):
+            for level, color in ((25.0, COLORS["neutral"]),
+                                 (50.0, COLORS["risk_off"])):
                 self.plot.addItem(pg.InfiniteLine(
                     pos=level, angle=0,
                     pen=pg.mkPen(color=color, width=1, style=Qt.PenStyle.DashLine)

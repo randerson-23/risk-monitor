@@ -15,7 +15,7 @@ from macro_tab import MacroTab
 from notifications import NotificationManager, ToastWidget
 from portfolio_tab import PortfolioTab
 from sectors_tab import SectorsTab
-from widgets import COLORS
+from widgets import COLORS, apply_font_delta_offset, fs, set_font_delta
 from workers import CryptoWorker, EquityWorker, MacroWorker, SectorWorker
 
 _REFRESH_MS = 5 * 60 * 1000  # 5 minutes
@@ -33,13 +33,13 @@ class _AskClaudeDialog(QDialog):
         self.setMinimumWidth(480)
         self.setStyleSheet(f"""
             QDialog   {{ background: {COLORS['card_bg']}; color: {COLORS['text_primary']}; }}
-            QLabel    {{ color: {COLORS['text_secondary']}; font-size: 14px; }}
+            QLabel    {{ color: {COLORS['text_secondary']}; font-size: {fs(14)}px; }}
             QTextEdit {{
                 background: {COLORS['bg']};
                 color: {COLORS['text_primary']};
                 border: 1px solid {COLORS['card_border']};
                 border-radius: 4px;
-                font-size: 14px;
+                font-size: {fs(14)}px;
                 padding: 6px;
             }}
         """)
@@ -74,7 +74,7 @@ class _AskClaudeDialog(QDialog):
                 border: 1px solid #bc8cff;
                 border-radius: 4px;
                 padding: 4px 14px;
-                font-size: 14px;
+                font-size: {fs(14)}px;
             }}
             QPushButton:hover {{ background: #bc8cff; color: {COLORS['bg']}; }}
         """)
@@ -85,7 +85,7 @@ class _AskClaudeDialog(QDialog):
                 border: 1px solid {COLORS['card_border']};
                 border-radius: 4px;
                 padding: 4px 14px;
-                font-size: 14px;
+                font-size: {fs(14)}px;
             }}
             QPushButton:hover {{ color: {COLORS['text_primary']}; border-color: {COLORS['text_primary']}; }}
         """)
@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1060, 780)
         self._pending = set()
         self._font_size = _DEFAULT_FONT
+        self._applied_font_delta = 0
         self._sector_data: dict = {}
         self._setup_ui()
         self._setup_font_shortcuts()
@@ -129,7 +130,7 @@ class MainWindow(QMainWindow):
                 border-bottom: none;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
-                font-size: 14px;
+                font-size: {fs(14)}px;
             }}
             QTabBar::tab:selected {{
                 background: {COLORS['bg']};
@@ -192,13 +193,13 @@ class MainWindow(QMainWindow):
 
         title = QLabel("RISK MONITOR")
         title.setStyleSheet(
-            f"color: {COLORS['text_primary']}; font-size: 15px; font-weight: bold; letter-spacing: 2px;"
+            f"color: {COLORS['text_primary']}; font-size: {fs(15)}px; font-weight: bold; letter-spacing: 2px;"
         )
         lay.addWidget(title)
         lay.addStretch()
 
         self.lbl_updated = QLabel("Not yet loaded")
-        self.lbl_updated.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 15px;")
+        self.lbl_updated.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(15)}px;")
         lay.addWidget(self.lbl_updated)
 
         # Ask Claude button
@@ -210,7 +211,7 @@ class MainWindow(QMainWindow):
                 color: #bc8cff;
                 border: 1px solid #bc8cff;
                 border-radius: 4px;
-                font-size: 14px;
+                font-size: {fs(14)}px;
             }}
             QPushButton:hover   {{ background: #bc8cff; color: {COLORS['bg']}; }}
             QPushButton:disabled {{ color: {COLORS['text_secondary']};
@@ -218,6 +219,42 @@ class MainWindow(QMainWindow):
         """)
         self.btn_claude.clicked.connect(self._ask_claude)
         lay.addWidget(self.btn_claude)
+
+        # Font size controls (A-  A  A+)
+        font_btn_style = f"""
+            QPushButton {{
+                background: transparent;
+                color: {COLORS['text_secondary']};
+                border: 1px solid {COLORS['card_border']};
+                border-radius: 4px;
+                font-size: {fs(13)}px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                color: {COLORS['text_primary']};
+                border-color: {COLORS['text_primary']};
+            }}
+        """
+        self.btn_font_dec = QPushButton("A−")
+        self.btn_font_dec.setFixedSize(28, 26)
+        self.btn_font_dec.setToolTip("Decrease font size (Ctrl −)")
+        self.btn_font_dec.setStyleSheet(font_btn_style)
+        self.btn_font_dec.clicked.connect(self._font_down)
+        lay.addWidget(self.btn_font_dec)
+
+        self.btn_font_reset = QPushButton("A")
+        self.btn_font_reset.setFixedSize(24, 26)
+        self.btn_font_reset.setToolTip("Reset font size (Ctrl 0)")
+        self.btn_font_reset.setStyleSheet(font_btn_style)
+        self.btn_font_reset.clicked.connect(self._font_reset)
+        lay.addWidget(self.btn_font_reset)
+
+        self.btn_font_inc = QPushButton("A+")
+        self.btn_font_inc.setFixedSize(28, 26)
+        self.btn_font_inc.setToolTip("Increase font size (Ctrl +)")
+        self.btn_font_inc.setStyleSheet(font_btn_style)
+        self.btn_font_inc.clicked.connect(self._font_up)
+        lay.addWidget(self.btn_font_inc)
 
         # Refresh button
         self.btn_refresh = QPushButton("⟳  Refresh")
@@ -228,7 +265,7 @@ class MainWindow(QMainWindow):
                 color: {COLORS['accent']};
                 border: 1px solid {COLORS['accent']};
                 border-radius: 4px;
-                font-size: 14px;
+                font-size: {fs(14)}px;
             }}
             QPushButton:hover   {{ background: {COLORS['accent']}; color: {COLORS['bg']}; }}
             QPushButton:disabled {{ color: {COLORS['text_secondary']};
@@ -314,9 +351,21 @@ class MainWindow(QMainWindow):
         self._apply_font()
 
     def _apply_font(self):
+        # Keep widgets.fs() in sync so newly-built labels pick up the right size.
+        new_delta = self._font_size - _DEFAULT_FONT
+        offset = new_delta - self._applied_font_delta
+        set_font_delta(new_delta)
+
         app = QApplication.instance()
         if app:
             app.setFont(QFont("Segoe UI", self._font_size))
+
+        # Walking from MainWindow covers every descendant widget (header,
+        # tabs, AI panel, toast). Custom-painted widgets repaint because
+        # apply_font_delta_offset calls .update() on every widget.
+        apply_font_delta_offset(self, offset)
+
+        self._applied_font_delta = new_delta
 
     # ── Notifications ──────────────────────────────────────────────────────────
 

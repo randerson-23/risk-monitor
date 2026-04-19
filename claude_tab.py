@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QListWidget,
                               QSplitter, QVBoxLayout, QWidget)
 
 from ai_analysis import get_recent_analyses
-from widgets import COLORS
+from widgets import COLORS, fs
 
 
 def _format_date_label(iso_str: str) -> str:
@@ -85,7 +85,7 @@ class ClaudeTab(QWidget):
         hdr = QLabel("  ANALYSIS HISTORY")
         hdr.setFixedHeight(38)
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; "
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; "
             f"font-weight: bold; letter-spacing: 1px; "
             f"padding: 12px 12px 4px 12px; border: none; "
             f"border-bottom: 1px solid {COLORS['card_border']};"
@@ -98,7 +98,7 @@ class ClaudeTab(QWidget):
                 background: {COLORS['card_bg']};
                 border: none;
                 outline: none;
-                font-size: 14px;
+                font-size: {fs(14)}px;
             }}
             QListWidget::item {{
                 color: {COLORS['text_secondary']};
@@ -121,7 +121,7 @@ class ClaudeTab(QWidget):
         # Empty state label
         self._empty_label = QLabel("No analyses yet.\nClick 'Ask Claude' to generate one.")
         self._empty_label.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; "
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; "
             f"padding: 20px; border: none;"
         )
         self._empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -262,7 +262,7 @@ class ClaudeTab(QWidget):
 
             ts_label = QLabel(f"🤖  {date_display}  ·  {time_display}")
             ts_label.setStyleSheet(
-                f"color: {COLORS['accent']}; font-size: 13px; "
+                f"color: {COLORS['accent']}; font-size: {fs(13)}px; "
                 f"font-weight: bold; border: none; padding: 0px;"
             )
             self._content_layout.addWidget(ts_label)
@@ -282,7 +282,7 @@ class ClaudeTab(QWidget):
                 | Qt.TextInteractionFlag.TextSelectableByKeyboard
             )
             body.setStyleSheet(
-                f"color: {COLORS['text_primary']}; font-size: 14px; "
+                f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; "
                 f"line-height: 1.6; border: none; padding: 0px; "
                 f"background: transparent;"
             )

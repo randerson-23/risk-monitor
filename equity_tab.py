@@ -7,7 +7,8 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QSizePolicy, QVBoxLayout, QWidget)
 
 from regime import compute_equity_regime, compute_equity_regime_history
-from widgets import COLORS, GaugeWidget, MetricCard, RegimeCard, regime_color
+from widgets import (COLORS, GaugeWidget, MetricCard, RegimeCard,
+                     apply_font_delta_offset, font_delta, fs, regime_color)
 
 # ── Chart metadata ─────────────────────────────────────────────────────────────
 
@@ -95,21 +96,23 @@ class EquityTab(QWidget):
 
         hdr = QLabel("INDICATORS")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             return l
 
         self.lbl_spx_ma   = _lbl("SPX vs 200MA: —")
         self.lbl_vix_reg  = _lbl("VIX Regime: —")
         self.lbl_breadth  = _lbl("Breadth: —")
         self.lbl_pc       = _lbl("Put/Call: —")
+        self.lbl_spx_vf   = _lbl("SPX Vol Forecast: —")
 
-        for l in (self.lbl_spx_ma, self.lbl_vix_reg, self.lbl_breadth, self.lbl_pc):
+        for l in (self.lbl_spx_ma, self.lbl_vix_reg, self.lbl_breadth,
+                  self.lbl_pc, self.lbl_spx_vf):
             lay.addWidget(l)
         lay.addStretch()
         return frame
@@ -124,9 +127,11 @@ class EquityTab(QWidget):
         self.card_breadth = MetricCard("BREADTH")
         self.card_spx     = MetricCard("S&P 500")
         self.card_cnn     = MetricCard("CNN F&G")
+        self.card_spx_vf  = MetricCard("SPX VOL FORECAST")
 
         for c in (self.card_vix, self.card_skew, self.card_pc,
-                  self.card_breadth, self.card_spx, self.card_cnn):
+                  self.card_breadth, self.card_spx, self.card_cnn,
+                  self.card_spx_vf):
             row.addWidget(c)
         return row
 
@@ -142,14 +147,14 @@ class EquityTab(QWidget):
 
         ctrl = QHBoxLayout()
         lbl = QLabel("Chart:")
-        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         ctrl.addWidget(lbl)
 
         self.chart_selector = QComboBox()
         self.chart_selector.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 13px; }}"
+            f"padding: 2px 6px; font-size: {fs(13)}px; }}"
         )
         self.chart_selector.addItems(_CHART_OPTIONS)
         self.chart_selector.currentIndexChanged.connect(self._render_chart)
@@ -201,20 +206,28 @@ class EquityTab(QWidget):
         pct   = d.get("spx_pct_from_200ma")
         if above is not None and pct is not None:
             c = COLORS["risk_on"] if above else COLORS["risk_off"]
-            self.lbl_spx_ma.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_spx_ma.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_spx_ma.setText(f"SPX vs 200MA: {'ABOVE' if above else 'BELOW'} ({pct:+.1f}%)")
 
         b = d.get("breadth_pct")
         if b is not None:
             c = _breadth_color(b)
-            self.lbl_breadth.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_breadth.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_breadth.setText(f"Breadth: {b:.1f}% above 200MA")
 
         pc = d.get("put_call_ratio")
         if pc is not None:
             c = _pc_color(pc)
-            self.lbl_pc.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_pc.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_pc.setText(f"Put/Call: {pc:.3f}")
+
+        vf = d.get("spx_vol_forecast")
+        if vf is not None:
+            rv = d.get("spx_rv21")
+            c = COLORS["risk_off"] if vf > 25 else (COLORS["risk_on"] if vf < 12 else COLORS["neutral"])
+            self.lbl_spx_vf.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
+            rv_str = f"  (rv21 {rv:.1f}%)" if rv is not None else ""
+            self.lbl_spx_vf.setText(f"SPX Vol Forecast: {vf:.1f}%{rv_str}")
 
     def _update_cards(self, d: dict) -> None:
         vix = d.get("vix")
@@ -247,6 +260,11 @@ class EquityTab(QWidget):
         if fg is not None:
             self.card_cnn.set_value(f"{fg:.0f}",
                                     d.get("cnn_fear_greed_rating", ""), _fg_color(fg))
+
+        vf = d.get("spx_vol_forecast")
+        if vf is not None:
+            c = COLORS["risk_off"] if vf > 25 else (COLORS["risk_on"] if vf < 12 else COLORS["neutral"])
+            self.card_spx_vf.set_value(f"{vf:.1f}%", "EWMA annualized", c)
 
     def _store_chart_series(self, d: dict) -> None:
         self._chart_series = {

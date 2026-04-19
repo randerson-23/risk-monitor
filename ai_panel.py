@@ -10,7 +10,7 @@ from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QPushButton,
                               QScrollArea, QTextEdit, QVBoxLayout, QWidget)
 
-from widgets import COLORS
+from widgets import COLORS, fs
 
 
 class AnalysisWorker(QThread):
@@ -77,7 +77,7 @@ class AIPanel(QFrame):
 
         title = QLabel("🤖  AI ANALYSIS")
         title.setStyleSheet(
-            f"color: {COLORS['accent']}; font-size: 14px; "
+            f"color: {COLORS['accent']}; font-size: {fs(14)}px; "
             f"font-weight: bold; letter-spacing: 1px; border: none;"
         )
         h_lay.addWidget(title)
@@ -90,7 +90,7 @@ class AIPanel(QFrame):
                 background: transparent;
                 color: {COLORS['text_secondary']};
                 border: none;
-                font-size: 14px;
+                font-size: {fs(14)}px;
             }}
             QPushButton:hover {{ color: {COLORS['text_primary']}; }}
         """)
@@ -102,7 +102,7 @@ class AIPanel(QFrame):
         self._status = QLabel("")
         self._status.setFixedHeight(24)
         self._status.setStyleSheet(
-            f"color: {COLORS['accent']}; font-size: 14px; "
+            f"color: {COLORS['accent']}; font-size: {fs(14)}px; "
             f"padding: 4px 12px; border: none; background: #1c2128;"
         )
         lay.addWidget(self._status)
@@ -124,7 +124,7 @@ class AIPanel(QFrame):
             f"  color: {COLORS['text_primary']};"
             f"  border: none;"
             f"  padding: 12px;"
-            f"  font-size: 14px;"
+            f"  font-size: {fs(14)}px;"
             f"  font-family: 'Segoe UI', 'Consolas', monospace;"
             f"  line-height: 1.5;"
             f"}}"
@@ -140,7 +140,7 @@ class AIPanel(QFrame):
         self._footer = QLabel("")
         self._footer.setFixedHeight(22)
         self._footer.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; "
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; "
             f"padding: 2px 12px; border: none; "
             f"border-top: 1px solid {COLORS['card_border']};"
         )
@@ -181,7 +181,7 @@ class AIPanel(QFrame):
 
         self._status.setText("⏳  Analyzing current conditions...")
         self._status.setStyleSheet(
-            f"color: {COLORS['neutral']}; font-size: 14px; "
+            f"color: {COLORS['neutral']}; font-size: {fs(14)}px; "
             f"padding: 4px 12px; border: none; background: #1c2128;"
         )
         self._content.setPlainText("")
@@ -197,7 +197,7 @@ class AIPanel(QFrame):
         self._content.setMarkdown(text)
         self._status.setText("✓  Analysis complete")
         self._status.setStyleSheet(
-            f"color: {COLORS['risk_on']}; font-size: 14px; "
+            f"color: {COLORS['risk_on']}; font-size: {fs(14)}px; "
             f"padding: 4px 12px; border: none; background: #1c2128;"
         )
 
@@ -211,7 +211,7 @@ class AIPanel(QFrame):
         self._content.setPlainText(f"Analysis failed:\n\n{msg}")
         self._status.setText("⚠  Error")
         self._status.setStyleSheet(
-            f"color: {COLORS['risk_off']}; font-size: 14px; "
+            f"color: {COLORS['risk_off']}; font-size: {fs(14)}px; "
             f"padding: 4px 12px; border: none; background: #1c2128;"
         )
         self._worker = None

@@ -7,6 +7,7 @@ Custom PyQt6 widgets:
 """
 
 import math
+import re
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QRectF, QPointF
@@ -34,6 +35,57 @@ def regime_color(condition) -> str:
     if condition is None:
         return COLORS["na"]
     return COLORS["risk_on"] if condition else COLORS["risk_off"]
+
+
+# ── Global font-size scaling ─────────────────────────────────────────────────
+# A single adjustable delta (in px/pt) applied to every base font size used by
+# tab stylesheets and the custom-painted widgets below. MainWindow mutates this
+# via set_font_delta(...) and then asks each tab to refresh its stylesheets.
+
+_FONT_DELTA = 0
+
+
+def font_delta() -> int:
+    return _FONT_DELTA
+
+
+def set_font_delta(delta: int) -> None:
+    global _FONT_DELTA
+    _FONT_DELTA = int(delta)
+
+
+def fs(base_px: int) -> int:
+    """Return the scaled pixel size for stylesheet font-size."""
+    return max(7, base_px + _FONT_DELTA)
+
+
+def fpt(base_pt: int) -> int:
+    """Return the scaled point size for QFont(..., pt)."""
+    return max(6, base_pt + _FONT_DELTA)
+
+
+_FONT_SIZE_RE = re.compile(r"font-size:\s*(\d+)px")
+
+
+def apply_font_delta_offset(root, offset: int) -> None:
+    """Walk ``root`` and every descendant QWidget, adding ``offset`` to each
+    ``font-size: Npx`` value encountered in their stylesheets. Pass the
+    *difference* vs. the previously-applied delta; values clamp at ≥7 px.
+
+    Custom painted widgets (MetricCard, GaugeWidget, ...) are triggered to
+    repaint via .update() since they read ``font_delta()`` directly.
+    """
+    if offset == 0:
+        return
+
+    def _shift(match: "re.Match[str]") -> str:
+        return f"font-size: {max(7, int(match.group(1)) + offset)}px"
+
+    for w in [root] + root.findChildren(QWidget):
+        ss = w.styleSheet()
+        if ss and "font-size" in ss:
+            w.setStyleSheet(_FONT_SIZE_RE.sub(_shift, ss))
+        w.update()
 
 
 # ── GaugeWidget ───────────────────────────────────────────────────────────────
@@ -95,18 +147,18 @@ class GaugeWidget(QWidget):
             p.drawEllipse(QPointF(cx, cy), 5, 5)
 
         p.setPen(QPen(QColor(COLORS["text_primary"])))
-        p.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        p.setFont(QFont("Segoe UI", fpt(22), QFont.Weight.Bold))
         val_str = f"{int(self._value)}" if self._value is not None else "—"
         p.drawText(QRectF(cx - 50, cy - 14, 100, 30), Qt.AlignmentFlag.AlignCenter, val_str)
 
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 12))
+        p.setFont(QFont("Segoe UI", fpt(12)))
         p.drawText(QRectF(cx - 75, cy + 18, 150, 18), Qt.AlignmentFlag.AlignCenter, self._label)
 
-        p.setFont(QFont("Segoe UI", 12))
+        p.setFont(QFont("Segoe UI", fpt(12)))
         p.drawText(QRectF(0, 6, w, 18), Qt.AlignmentFlag.AlignCenter, self.title)
 
-        p.setFont(QFont("Segoe UI", 11))
+        p.setFont(QFont("Segoe UI", fpt(11)))
         p.drawText(QRectF(cx - radius - 2, cy - 14, 44, 16), Qt.AlignmentFlag.AlignCenter, "Fear")
         p.drawText(QRectF(cx + radius - 42, cy - 14, 44, 16), Qt.AlignmentFlag.AlignCenter, "Greed")
 
@@ -138,16 +190,16 @@ class RegimeCard(QWidget):
         p.drawRoundedRect(2, 2, w - 4, h - 4, 8, 8)
 
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 12))
+        p.setFont(QFont("Segoe UI", fpt(12)))
         p.drawText(QRectF(0, 14, w, 22), Qt.AlignmentFlag.AlignCenter, "REGIME")
 
         p.setPen(QPen(QColor(self._color)))
-        p.setFont(QFont("Segoe UI", 22, QFont.Weight.Bold))
+        p.setFont(QFont("Segoe UI", fpt(22), QFont.Weight.Bold))
         p.drawText(QRectF(0, 40, w, 40), Qt.AlignmentFlag.AlignCenter, self._regime)
 
         if self._score is not None:
             p.setPen(QPen(QColor(COLORS["text_secondary"])))
-            p.setFont(QFont("Segoe UI", 13))
+            p.setFont(QFont("Segoe UI", fpt(13)))
             sign = "+" if self._score > 0 else ""
             p.drawText(QRectF(0, 86, w, 24), Qt.AlignmentFlag.AlignCenter,
                        f"Score: {sign}{self._score}")
@@ -186,16 +238,16 @@ class MetricCard(QWidget):
         p.drawRoundedRect(1, 1, w - 2, h - 2, 6, 6)
 
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 11))
+        p.setFont(QFont("Segoe UI", fpt(11)))
         p.drawText(QRectF(4, 8, w - 8, 20), Qt.AlignmentFlag.AlignCenter, self._label)
 
         p.setPen(QPen(QColor(self._val_color)))
-        p.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        p.setFont(QFont("Segoe UI", fpt(16), QFont.Weight.Bold))
         p.drawText(QRectF(4, 30, w - 8, 30), Qt.AlignmentFlag.AlignCenter, self._value)
 
         if self._sub:
             p.setPen(QPen(QColor(COLORS["text_secondary"])))
-            p.setFont(QFont("Segoe UI", 11))
+            p.setFont(QFont("Segoe UI", fpt(11)))
             p.drawText(QRectF(4, 64, w - 8, 18), Qt.AlignmentFlag.AlignCenter, self._sub)
 
 
@@ -295,16 +347,16 @@ class CycleClockWidget(QWidget):
         p.drawEllipse(QPointF(dot_x, dot_y), 7, 7)
 
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 12))
+        p.setFont(QFont("Segoe UI", fpt(12)))
         p.drawText(QRectF(0, 5, w, 16), Qt.AlignmentFlag.AlignCenter, "4-YEAR HALVING CYCLE")
 
         p.setPen(QPen(QColor(self._color)))
-        p.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        p.setFont(QFont("Segoe UI", fpt(9), QFont.Weight.Bold))
         p.drawText(QRectF(cx - inner * 0.85, cy - inner * 0.48, inner * 1.7, 18),
                    Qt.AlignmentFlag.AlignCenter, self._phase)
 
         p.setPen(QPen(QColor(COLORS["text_secondary"])))
-        p.setFont(QFont("Segoe UI", 11))
+        p.setFont(QFont("Segoe UI", fpt(11)))
         p.drawText(QRectF(cx - inner * 0.85, cy - inner * 0.18, inner * 1.7, 15),
                    Qt.AlignmentFlag.AlignCenter, f"Day {self._days_in}")
         p.drawText(QRectF(cx - inner * 0.85, cy + inner * 0.08, inner * 1.7, 15),
@@ -312,5 +364,5 @@ class CycleClockWidget(QWidget):
 
         action_y = cy + inner + track_w * 0.5 + 10
         p.setPen(QPen(QColor(self._color)))
-        p.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
+        p.setFont(QFont("Segoe UI", fpt(15), QFont.Weight.Bold))
         p.drawText(QRectF(0, action_y, w, 24), Qt.AlignmentFlag.AlignCenter, self._action)

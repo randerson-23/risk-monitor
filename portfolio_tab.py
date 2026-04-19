@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
 from regime import (NEUTRAL, REGIME_COLORS, RISK_OFF, RISK_ON,
                     compute_crypto_regime, compute_equity_regime,
                     compute_macro_regime)
-from widgets import COLORS, CycleClockWidget
+from widgets import COLORS, CycleClockWidget, apply_font_delta_offset, font_delta, fs
 
 # ── Continuous allocation functions ──────────────────────────────────────────
 
@@ -388,7 +388,7 @@ class PortfolioTab(QWidget):
     def _section_lbl(self, text):
         l = QLabel(text)
         l.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; "
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; "
             f"font-weight: bold; letter-spacing: 1px; border: none;"
         )
         return l
@@ -407,14 +407,14 @@ class PortfolioTab(QWidget):
     def _big_lbl(self):
         l = QLabel("—")
         l.setStyleSheet(
-            f"color: {COLORS['text_primary']}; font-size: 38px; "
+            f"color: {COLORS['text_primary']}; font-size: {fs(38)}px; "
             f"font-weight: bold; border: none;"
         )
         return l
 
     def _signal_lbl(self):
         l = QLabel("")
-        l.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        l.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         l.setWordWrap(True)
         return l
 
@@ -430,14 +430,14 @@ class PortfolioTab(QWidget):
 
         title = QLabel("PORTFOLIO ALLOCATION")
         title.setStyleSheet(
-            f"color: {COLORS['text_primary']}; font-size: 14px; "
+            f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; "
             f"font-weight: bold; letter-spacing: 1px; border: none;"
         )
         lay.addWidget(title); lay.addStretch()
 
         def _badge(text):
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['na']}; font-size: 13px; font-weight: bold; border: none;")
+            l.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
             return l
 
         self.lbl_eq_badge  = _badge("EQ: —")
@@ -445,7 +445,7 @@ class PortfolioTab(QWidget):
         self.lbl_mc_badge  = _badge("MACRO: —")
         self.lbl_overall   = _badge("Overall: —")
         self.lbl_overall.setStyleSheet(
-            f"color: {COLORS['na']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         for lbl in (self.lbl_eq_badge, self.lbl_cr_badge, self.lbl_mc_badge):
             lay.addSpacing(20); lay.addWidget(lbl)
@@ -459,16 +459,16 @@ class PortfolioTab(QWidget):
         lay = QVBoxLayout(frame); lay.setContentsMargins(14, 12, 14, 12); lay.setSpacing(6)
 
         hdr = QLabel("BETTERMENT  EQUITY / BOND TARGET  (40% sleeve)")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         sub = QLabel("Single allocation number  ·  equity + macro + rates + credit + vol")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(hdr); lay.addWidget(sub)
 
         drivers = QHBoxLayout()
         self.lbl_bet_eq = QLabel("EQUITY: —")
         self.lbl_bet_mc = QLabel("MACRO: —")
         for l in (self.lbl_bet_eq, self.lbl_bet_mc):
-            l.setStyleSheet(f"color: {COLORS['na']}; font-size: 14px; font-weight: bold; border: none;")
+            l.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
             drivers.addWidget(l)
         drivers.addStretch()
         lay.addLayout(drivers)
@@ -478,9 +478,9 @@ class PortfolioTab(QWidget):
 
         split_row = QHBoxLayout()
         self.lbl_eq_split = QLabel("EQ: —%")
-        self.lbl_eq_split.setStyleSheet(f"color: {COLORS['risk_on']}; font-size: 38px; font-weight: bold; border: none;")
+        self.lbl_eq_split.setStyleSheet(f"color: {COLORS['risk_on']}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         self.lbl_bond_split = QLabel("BOND: —%")
-        self.lbl_bond_split.setStyleSheet(f"color: {COLORS['accent']}; font-size: 38px; font-weight: bold; border: none;")
+        self.lbl_bond_split.setStyleSheet(f"color: {COLORS['accent']}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         split_row.addWidget(self.lbl_eq_split); split_row.addWidget(self.lbl_bond_split)
         lay.addLayout(split_row)
 
@@ -497,13 +497,13 @@ class PortfolioTab(QWidget):
         lay.addWidget(self._section_lbl("BOND ENVIRONMENT"))
 
         self.lbl_move_ctx = QLabel("MOVE: —")
-        self.lbl_move_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self.lbl_move_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         self.lbl_real_yld_ctx = QLabel("Real Yield: —")
-        self.lbl_real_yld_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self.lbl_real_yld_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         self.lbl_be_ctx = QLabel("5Y Breakeven: —")
-        self.lbl_be_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self.lbl_be_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         self.lbl_hy_ctx = QLabel("HY Spread: —")
-        self.lbl_hy_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self.lbl_hy_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         for l in (self.lbl_move_ctx, self.lbl_real_yld_ctx, self.lbl_be_ctx, self.lbl_hy_ctx):
             lay.addWidget(l)
         lay.addStretch()
@@ -516,13 +516,13 @@ class PortfolioTab(QWidget):
         lay = QVBoxLayout(frame); lay.setContentsMargins(14, 12, 14, 12); lay.setSpacing(6)
 
         hdr = QLabel("BITCOIN  IBIT  (40% sleeve)")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         sub = QLabel("Crypto regime + cycle → deployed %")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(hdr); lay.addWidget(sub)
 
         self.lbl_btc_regime = QLabel("CRYPTO: —")
-        self.lbl_btc_regime.setStyleSheet(f"color: {COLORS['na']}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_btc_regime.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         lay.addWidget(self.lbl_btc_regime)
 
         lay.addWidget(self._divider())
@@ -531,9 +531,9 @@ class PortfolioTab(QWidget):
         self.lbl_btc_pct  = self._big_lbl()
         self.bar_btc      = self._bar()
         self.lbl_btc_cash = QLabel("Cash (SGOV): —")
-        self.lbl_btc_cash.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self.lbl_btc_cash.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         self.lbl_btc_gold = QLabel("BTC/Gold ratio: —")
-        self.lbl_btc_gold.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        self.lbl_btc_gold.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(self.lbl_btc_pct); lay.addWidget(self.bar_btc)
         lay.addWidget(self.lbl_btc_cash); lay.addWidget(self.lbl_btc_gold)
 
@@ -555,36 +555,36 @@ class PortfolioTab(QWidget):
         lay = QVBoxLayout(frame); lay.setContentsMargins(14, 12, 14, 12); lay.setSpacing(6)
 
         hdr = QLabel("IBIT  PREMIUM OVERLAY")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         sub = QLabel("CC (0.15∆) + CSP (0.20∆)  ·  size by crypto regime")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(hdr); lay.addWidget(sub)
 
         lay.addWidget(self._divider())
         lay.addWidget(self._section_lbl("POSITION SIZING"))
         self.lbl_ibit_sizing = self._big_lbl()
         self.lbl_ibit_sizing_desc = QLabel("")
-        self.lbl_ibit_sizing_desc.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        self.lbl_ibit_sizing_desc.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_ibit_sizing_desc.setWordWrap(True)
         lay.addWidget(self.lbl_ibit_sizing); lay.addWidget(self.lbl_ibit_sizing_desc)
 
         lay.addWidget(self._divider())
         lay.addWidget(self._section_lbl("IV / RV CONDITIONS"))
         self.lbl_ibit_iv = QLabel("IBIT IV: —")
-        self.lbl_ibit_iv.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 13px; border: none;")
+        self.lbl_ibit_iv.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; border: none;")
         self.lbl_ibit_iv_rv = QLabel("IV/RV Spread: —")
-        self.lbl_ibit_iv_rv.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self.lbl_ibit_iv_rv.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         lay.addWidget(self.lbl_ibit_iv); lay.addWidget(self.lbl_ibit_iv_rv)
 
         lay.addWidget(self._divider())
         lay.addWidget(self._section_lbl("STRATEGY"))
         self.lbl_ibit_lean = QLabel("LEAN: —")
-        self.lbl_ibit_lean.setStyleSheet(f"color: {COLORS['na']}; font-size: 13px; font-weight: bold; border: none;")
+        self.lbl_ibit_lean.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         self.lbl_ibit_cc = QLabel("CC: —")
-        self.lbl_ibit_cc.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+        self.lbl_ibit_cc.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_ibit_cc.setWordWrap(True)
         self.lbl_ibit_csp = QLabel("CSP: —")
-        self.lbl_ibit_csp.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+        self.lbl_ibit_csp.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_ibit_csp.setWordWrap(True)
         lay.addWidget(self.lbl_ibit_lean); lay.addWidget(self.lbl_ibit_cc); lay.addWidget(self.lbl_ibit_csp)
         lay.addStretch()
@@ -597,18 +597,18 @@ class PortfolioTab(QWidget):
         lay = QVBoxLayout(frame); lay.setContentsMargins(14, 12, 14, 12); lay.setSpacing(6)
 
         hdr = QLabel("SPX / ES  PREMIUM SELLING  (20% sleeve)")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         sub = QLabel("Income strategy  ·  size by VIX percentile  ·  idle cash in treasuries")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(hdr); lay.addWidget(sub)
 
         lay.addWidget(self._divider())
         lay.addWidget(self._section_lbl("DIRECTIONAL LEAN"))
         self.lbl_spx_lean = QLabel("—")
-        self.lbl_spx_lean.setStyleSheet(f"color: {COLORS['na']}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_spx_lean.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         self.lbl_spx_lean.setWordWrap(True)
         self.lbl_spx_naked = QLabel("—")
-        self.lbl_spx_naked.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        self.lbl_spx_naked.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_spx_naked.setWordWrap(True)
         lay.addWidget(self.lbl_spx_lean); lay.addWidget(self.lbl_spx_naked)
 
@@ -618,20 +618,20 @@ class PortfolioTab(QWidget):
         self.lbl_vix_val    = QLabel("VIX: —")
         self.lbl_vix_pctile = QLabel("Pctile: —  ·  IVR: —")
         for l in (self.lbl_vix_val, self.lbl_vix_pctile):
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
         vix_row.addWidget(self.lbl_vix_val); vix_row.addStretch(); vix_row.addWidget(self.lbl_vix_pctile)
         lay.addLayout(vix_row)
         self.bar_vix = self._bar()
         lay.addWidget(self.bar_vix)
         self.lbl_iv_rv = QLabel("IV/RV Spread: —")
-        self.lbl_iv_rv.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self.lbl_iv_rv.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         lay.addWidget(self.lbl_iv_rv)
 
         lay.addWidget(self._divider())
         lay.addWidget(self._section_lbl("POSITION SIZING"))
         self.lbl_sizing = self._big_lbl()
         self.lbl_sizing_desc = QLabel("")
-        self.lbl_sizing_desc.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        self.lbl_sizing_desc.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_sizing_desc.setWordWrap(True)
         lay.addWidget(self.lbl_sizing); lay.addWidget(self.lbl_sizing_desc)
 
@@ -640,7 +640,7 @@ class PortfolioTab(QWidget):
         self.lbl_ev1w = QLabel("1-Week:   —")
         self.lbl_ev1m = QLabel("1-Month:  —")
         for l in (self.lbl_ev1w, self.lbl_ev1m):
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 13px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; border: none;")
         lay.addWidget(self.lbl_ev1w); lay.addWidget(self.lbl_ev1m)
 
         lay.addWidget(self._divider())
@@ -649,9 +649,9 @@ class PortfolioTab(QWidget):
         for tenor in ("1DTE", "30DTE", "45DTE"):
             row = QHBoxLayout(); row.setSpacing(6)
             t_lbl = QLabel(tenor); t_lbl.setFixedWidth(38)
-            t_lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;")
+            t_lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
             r_lbl = QLabel("—")
-            r_lbl.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            r_lbl.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             r_lbl.setWordWrap(True)
             self._strat_lbls[tenor] = r_lbl
             row.addWidget(t_lbl); row.addWidget(r_lbl, stretch=1)
@@ -666,20 +666,20 @@ class PortfolioTab(QWidget):
         lay = QVBoxLayout(frame); lay.setContentsMargins(14, 12, 14, 12); lay.setSpacing(6)
 
         hdr = QLabel("CASH YIELD")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         sub = QLabel("What idle cash earns across sleeves")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(hdr); lay.addWidget(sub)
 
         lay.addWidget(self._divider())
         self.lbl_cash_1m = QLabel("1M T-Bill: —")
-        self.lbl_cash_1m.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+        self.lbl_cash_1m.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_cash_3m = QLabel("3M T-Bill: —")
-        self.lbl_cash_3m.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+        self.lbl_cash_3m.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_cash_sgov = QLabel("SGOV proxy: —")
-        self.lbl_cash_sgov.setStyleSheet(f"color: {COLORS['accent']}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_cash_sgov.setStyleSheet(f"color: {COLORS['accent']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         self.lbl_cash_note = QLabel("Idle cash in BTC & premium sleeves earns short-term treasury yield")
-        self.lbl_cash_note.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 14px; border: none;")
+        self.lbl_cash_note.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         self.lbl_cash_note.setWordWrap(True)
         for l in (self.lbl_cash_1m, self.lbl_cash_3m, self.lbl_cash_sgov, self.lbl_cash_note):
             lay.addWidget(l)
@@ -757,10 +757,10 @@ class PortfolioTab(QWidget):
         elif vote <= -2: overall, oc = RISK_OFF, REGIME_COLORS[RISK_OFF]
         else:            overall, oc = NEUTRAL,  REGIME_COLORS[NEUTRAL]
         self.lbl_overall.setText(f"Overall: {overall}  ({vote:+d}/3)")
-        self.lbl_overall.setStyleSheet(f"color: {oc}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_overall.setStyleSheet(f"color: {oc}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         for lbl, rd, prefix in ((self.lbl_eq_badge, eq, "EQ"), (self.lbl_cr_badge, cr, "BTC"), (self.lbl_mc_badge, mc, "MACRO")):
             lbl.setText(f"{prefix}: {rd['regime']}")
-            lbl.setStyleSheet(f"color: {rd['color']}; font-size: 13px; font-weight: bold; border: none;")
+            lbl.setStyleSheet(f"color: {rd['color']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
 
     # ── Betterment ────────────────────────────────────────────────────────────
 
@@ -779,15 +779,15 @@ class PortfolioTab(QWidget):
         )
 
         self.lbl_bet_eq.setText(f"EQUITY: {eq['regime']}  ({eq_score:+d}/8)")
-        self.lbl_bet_eq.setStyleSheet(f"color: {eq['color']}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_bet_eq.setStyleSheet(f"color: {eq['color']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         self.lbl_bet_mc.setText(f"  MACRO: {mc['regime']}  ({mc_score:+d}/7)")
-        self.lbl_bet_mc.setStyleSheet(f"color: {mc['color']}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_bet_mc.setStyleSheet(f"color: {mc['color']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
 
         eq_color = COLORS["risk_on"] if eq_pct >= 75 else (COLORS["neutral"] if eq_pct >= 60 else COLORS["risk_off"])
         self.lbl_eq_split.setText(f"EQ: {eq_pct}%")
-        self.lbl_eq_split.setStyleSheet(f"color: {eq_color}; font-size: 38px; font-weight: bold; border: none;")
+        self.lbl_eq_split.setStyleSheet(f"color: {eq_color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         self.lbl_bond_split.setText(f"BOND: {bond_pct}%")
-        self.lbl_bond_split.setStyleSheet(f"color: {COLORS['accent']}; font-size: 38px; font-weight: bold; border: none;")
+        self.lbl_bond_split.setStyleSheet(f"color: {COLORS['accent']}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         self.bar_eq_bond.setValue(eq_pct)
         self.bar_eq_bond.setStyleSheet(_bar_style(eq_color))
 
@@ -797,7 +797,7 @@ class PortfolioTab(QWidget):
         if move is not None:
             mc_color = COLORS["risk_off"] if move > 130 else (COLORS["risk_on"] if move < 80 else COLORS["text_primary"])
             self.lbl_move_ctx.setText(f"MOVE: {move:.0f}")
-            self.lbl_move_ctx.setStyleSheet(f"color: {mc_color}; font-size: 13px; border: none;")
+            self.lbl_move_ctx.setStyleSheet(f"color: {mc_color}; font-size: {fs(13)}px; border: none;")
         if real_yld is not None:
             self.lbl_real_yld_ctx.setText(f"10Y Real Yield: {real_yld:.2f}%")
         if be5y is not None:
@@ -805,7 +805,7 @@ class PortfolioTab(QWidget):
         if hy_spread is not None:
             hy_c = COLORS["risk_off"] if hy_spread > 5 else (COLORS["risk_on"] if hy_spread < 3 else COLORS["text_primary"])
             self.lbl_hy_ctx.setText(f"HY Spread: {hy_spread:.2f}%")
-            self.lbl_hy_ctx.setStyleSheet(f"color: {hy_c}; font-size: 13px; border: none;")
+            self.lbl_hy_ctx.setStyleSheet(f"color: {hy_c}; font-size: {fs(13)}px; border: none;")
 
     # ── BTC ────────────────────────────────────────────────────────────────────
 
@@ -814,9 +814,9 @@ class PortfolioTab(QWidget):
         color = _exposure_color(exposure)
         cyc_action = self.cycle_clock.get_action()
         self.lbl_btc_regime.setText(f"CRYPTO: {cr['regime']}  ({cr.get('score', 0):+d})  ·  {cyc_action}")
-        self.lbl_btc_regime.setStyleSheet(f"color: {cr['color']}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_btc_regime.setStyleSheet(f"color: {cr['color']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         self.lbl_btc_pct.setText(f"{exposure}%")
-        self.lbl_btc_pct.setStyleSheet(f"color: {color}; font-size: 38px; font-weight: bold; border: none;")
+        self.lbl_btc_pct.setStyleSheet(f"color: {color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         self.bar_btc.setValue(exposure); self.bar_btc.setStyleSheet(_bar_style(color))
         self.lbl_btc_cash.setText(f"Cash (SGOV): {100 - exposure}%")
 
@@ -838,7 +838,7 @@ class PortfolioTab(QWidget):
         sizing, sizing_label = _ibit_premium_sizing(cr_score, btc_rv30)
         sizing_color = _exposure_color(int(sizing * 100))
         self.lbl_ibit_sizing.setText(f"{sizing:.2f}×")
-        self.lbl_ibit_sizing.setStyleSheet(f"color: {sizing_color}; font-size: 38px; font-weight: bold; border: none;")
+        self.lbl_ibit_sizing.setStyleSheet(f"color: {sizing_color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         self.lbl_ibit_sizing_desc.setText(sizing_label)
 
         ibit_iv = self._crypto_data.get("ibit_iv")
@@ -851,15 +851,15 @@ class PortfolioTab(QWidget):
                 elif spread < -5:  label, c = "premium cheap", COLORS["risk_off"]
                 else:              label, c = "fair", COLORS["neutral"]
                 self.lbl_ibit_iv_rv.setText(f"IV/RV Spread: {spread:+.1f}pp  ({label})  ·  RV21: {ibit_rv:.1f}%")
-                self.lbl_ibit_iv_rv.setStyleSheet(f"color: {c}; font-size: 13px; border: none;")
+                self.lbl_ibit_iv_rv.setStyleSheet(f"color: {c}; font-size: {fs(13)}px; border: none;")
 
         recs = _ibit_strategy_recs(cr_score, ibit_price, btc_rv30)
         self.lbl_ibit_lean.setText(recs["lean"])
-        self.lbl_ibit_lean.setStyleSheet(f"color: {recs['lean_color']}; font-size: 13px; font-weight: bold; border: none;")
+        self.lbl_ibit_lean.setStyleSheet(f"color: {recs['lean_color']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         self.lbl_ibit_cc.setText(f"CC: {recs['cc_action']}")
-        self.lbl_ibit_cc.setStyleSheet(f"color: {recs['cc_color']}; font-size: 14px; border: none;")
+        self.lbl_ibit_cc.setStyleSheet(f"color: {recs['cc_color']}; font-size: {fs(14)}px; border: none;")
         self.lbl_ibit_csp.setText(f"CSP: {recs['csp_action']}")
-        self.lbl_ibit_csp.setStyleSheet(f"color: {recs['csp_color']}; font-size: 14px; border: none;")
+        self.lbl_ibit_csp.setStyleSheet(f"color: {recs['csp_color']}; font-size: {fs(14)}px; border: none;")
 
     # ── SPX Premium ───────────────────────────────────────────────────────────
 
@@ -870,7 +870,7 @@ class PortfolioTab(QWidget):
         lean_text, naked_rec, lean_color = _spx_directional_lean(
             eq_regime["regime"], eq_regime.get("score", 0), mc_regime["regime"])
         self.lbl_spx_lean.setText(lean_text)
-        self.lbl_spx_lean.setStyleSheet(f"color: {lean_color}; font-size: 14px; font-weight: bold; border: none;")
+        self.lbl_spx_lean.setStyleSheet(f"color: {lean_color}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         self.lbl_spx_naked.setText(naked_rec)
 
         if vix is not None:
@@ -881,12 +881,12 @@ class PortfolioTab(QWidget):
             else:                   pc = COLORS["neutral"]
             ivr_str = f"  ·  IVR: {ivr:.0f}%" if ivr is not None else ""
             self.lbl_vix_pctile.setText(f"Pctile: {vix_pctile:.0f}%{ivr_str}")
-            self.lbl_vix_pctile.setStyleSheet(f"color: {pc}; font-size: 14px; border: none;")
+            self.lbl_vix_pctile.setStyleSheet(f"color: {pc}; font-size: {fs(14)}px; border: none;")
             self.bar_vix.setValue(int(vix_pctile)); self.bar_vix.setStyleSheet(_bar_style(pc))
 
         sizing_color = _exposure_color(int(sizing * 100))
         self.lbl_sizing.setText(f"{sizing:.2f}×")
-        self.lbl_sizing.setStyleSheet(f"color: {sizing_color}; font-size: 38px; font-weight: bold; border: none;")
+        self.lbl_sizing.setStyleSheet(f"color: {sizing_color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         self.lbl_sizing_desc.setText(sizing_label)
 
         spx_hist = eq_data.get("spx_hist")
@@ -897,7 +897,7 @@ class PortfolioTab(QWidget):
             elif iv_rv < -3:   iv_c, iv_label = COLORS["risk_off"], "premium cheap"
             else:              iv_c, iv_label = COLORS["neutral"], "fairly priced"
             self.lbl_iv_rv.setText(f"IV/RV Spread: {iv_rv:+.1f}pp  ({iv_label})")
-            self.lbl_iv_rv.setStyleSheet(f"color: {iv_c}; font-size: 13px; border: none;")
+            self.lbl_iv_rv.setStyleSheet(f"color: {iv_c}; font-size: {fs(13)}px; border: none;")
 
         spx = eq_data.get("spx")
         if spx is not None and vix is not None:
@@ -909,7 +909,7 @@ class PortfolioTab(QWidget):
         recs = _strategy_recs(vix, eq_regime["regime"])
         for tenor, text, color in recs:
             lbl = self._strat_lbls[tenor]; lbl.setText(text)
-            lbl.setStyleSheet(f"color: {color}; font-size: 14px; border: none;")
+            lbl.setStyleSheet(f"color: {color}; font-size: {fs(14)}px; border: none;")
 
     # ── Cash Yield ────────────────────────────────────────────────────────────
 
