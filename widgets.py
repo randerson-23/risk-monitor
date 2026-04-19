@@ -8,6 +8,7 @@ Custom PyQt6 widgets:
 """
 
 import math
+import re
 from datetime import datetime
 
 import pyqtgraph as pg
@@ -23,6 +24,50 @@ def regime_color(condition) -> str:
     if condition is None:
         return COLORS["na"]
     return COLORS["risk_on"] if condition else COLORS["risk_off"]
+
+
+# ── Global font-size scaling ─────────────────────────────────────────────────
+# A single delta (in px) applied to every base font size used by tab
+# stylesheets via the ``fs()`` helper. MainWindow mutates this via
+# ``set_font_delta(...)`` and then walks the widget tree with
+# ``apply_font_delta_offset(...)`` to shift existing stylesheets.
+
+_FONT_DELTA: int = 0
+
+
+def font_delta() -> int:
+    return _FONT_DELTA
+
+
+def set_font_delta(delta: int) -> None:
+    global _FONT_DELTA
+    _FONT_DELTA = int(delta)
+
+
+def fs(base_px: int) -> int:
+    """Return the scaled pixel size for stylesheet ``font-size: ...px``."""
+    return max(7, base_px + _FONT_DELTA)
+
+
+_FONT_SIZE_RE = re.compile(r"font-size:\s*(\d+)px")
+
+
+def apply_font_delta_offset(root, offset: int) -> None:
+    """Walk ``root`` and every descendant QWidget, adding ``offset`` to every
+    ``font-size: Npx`` value in their stylesheets. Pass the *difference* vs.
+    the previously-applied delta; values clamp at ≥ 7 px. Also calls
+    ``.update()`` so custom-painted widgets repaint."""
+    if offset == 0:
+        return
+
+    def _shift(match: "re.Match[str]") -> str:
+        return f"font-size: {max(7, int(match.group(1)) + offset)}px"
+
+    for w in [root] + root.findChildren(QWidget):
+        ss = w.styleSheet()
+        if ss and "font-size" in ss:
+            w.setStyleSheet(_FONT_SIZE_RE.sub(_shift, ss))
+        w.update()
 
 
 # ── GaugeWidget ───────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
 
 from forecast_panel import VolForecastPanel
 from regime import compute_equity_regime, compute_equity_regime_history
-from widgets import COLORS, RiskSentimentWidget, MetricCard, RegimeCard, TearOffFrame, regime_color
+from widgets import COLORS, RiskSentimentWidget, MetricCard, RegimeCard, TearOffFrame, fs, regime_color
 
 # ── Chart metadata ─────────────────────────────────────────────────────────────
 
@@ -104,13 +104,13 @@ class EquityTab(QWidget):
 
         hdr = QLabel("INDICATORS")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             return l
 
         self.lbl_spx_ma   = _lbl("SPX vs 200MA: —")
@@ -151,14 +151,14 @@ class EquityTab(QWidget):
 
         ctrl = QHBoxLayout()
         lbl = QLabel("Chart:")
-        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         ctrl.addWidget(lbl)
 
         self.chart_selector = QComboBox()
         self.chart_selector.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 13px; }}"
+            f"padding: 2px 6px; font-size: {fs(13)}px; }}"
         )
         self.chart_selector.addItems(_CHART_OPTIONS)
         self.chart_selector.currentIndexChanged.connect(self._render_chart)
@@ -214,19 +214,19 @@ class EquityTab(QWidget):
         pct   = d.get("spx_pct_from_200ma")
         if above is not None and pct is not None:
             c = COLORS["risk_on"] if above else COLORS["risk_off"]
-            self.lbl_spx_ma.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_spx_ma.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_spx_ma.setText(f"SPX vs 200MA: {'ABOVE' if above else 'BELOW'} ({pct:+.1f}%)")
 
         b = d.get("breadth_pct")
         if b is not None:
             c = _breadth_color(b)
-            self.lbl_breadth.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_breadth.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_breadth.setText(f"Breadth: {b:.1f}% above 200MA")
 
         pc = d.get("put_call_ratio")
         if pc is not None:
             c = _pc_color(pc)
-            self.lbl_pc.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_pc.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_pc.setText(f"Put/Call: {pc:.3f}")
 
     def _update_cards(self, d: dict) -> None:

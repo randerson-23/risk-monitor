@@ -4,6 +4,7 @@ All functions return dicts; missing data fields are omitted (not None-filled)
 so callers should use .get() with a default.
 """
 
+import math
 import os
 import numpy as np
 import requests
@@ -27,6 +28,29 @@ def _pct_from_ma(series, window=200):
     ma = series.rolling(window).mean().iloc[-1]
     cur = series.iloc[-1]
     return cur, ma, round((cur - ma) / ma * 100, 2), bool(cur > ma)
+
+
+def _ewma_vol_forecast(returns: pd.Series, lam: float = 0.94,
+                       periods_per_year: int = 252) -> float | None:
+    """
+    RiskMetrics-style EWMA volatility forecast (annualized %).
+    Returns None if insufficient data.
+    """
+    r = returns.dropna()
+    if len(r) < 30:
+        return None
+    # Seed variance with the sample variance, then apply EWMA recursion
+    var = float(r.var())
+    for val in r:
+        var = lam * var + (1.0 - lam) * float(val) ** 2
+    if var <= 0:
+        return None
+    return float(math.sqrt(var) * math.sqrt(periods_per_year) * 100.0)
+
+
+def _norm_cdf(z: float) -> float:
+    """Standard-normal CDF using math.erf (no scipy dependency)."""
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
 def _fetch_fred_series(series_id: str, start: str = "2000-01-01") -> pd.Series:
@@ -172,6 +196,16 @@ def fetch_equity_data() -> dict:
             result["spx_above_200ma"] = above
             result["spx_pct_from_200ma"] = pct
             result["spx_hist"] = hist
+
+            # SPX vol forecast: EWMA (RiskMetrics λ=0.94), annualized %
+            rets = np.log(hist / hist.shift(1)).dropna()
+            fcst = _ewma_vol_forecast(rets, lam=0.94, periods_per_year=252)
+            if fcst is not None:
+                result["spx_vol_forecast"] = round(fcst, 2)
+            # 21-day realized vol for context
+            if len(rets) >= 21:
+                rv21 = float(rets.tail(21).std() * math.sqrt(252) * 100.0)
+                result["spx_rv21"] = round(rv21, 2)
     except Exception:
         pass
 
@@ -261,6 +295,12 @@ def fetch_crypto_data() -> dict:
             result["rv30_hist"] = (
                 daily_ret.rolling(30).std() * np.sqrt(365) * 100
             ).dropna()
+
+            # BTC vol forecast: EWMA (λ=0.94), annualized % (crypto = 365 days)
+            log_ret = np.log(hist / hist.shift(1)).dropna()
+            fcst = _ewma_vol_forecast(log_ret, lam=0.94, periods_per_year=365)
+            if fcst is not None:
+                result["btc_vol_forecast"] = round(fcst, 2)
 
             # ATH distance
             ath = float(hist.max())

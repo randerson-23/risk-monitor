@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (QApplication, QFrame, QHBoxLayout, QLabel,
                               QPushButton, QSystemTrayIcon, QVBoxLayout,
                               QWidget)
 
-from widgets import COLORS
+from widgets import COLORS, fs
 
 
 def _make_icon() -> QIcon:
@@ -53,13 +53,13 @@ class ToastWidget(QFrame):
 
         self._icon_lbl = QLabel("⚠")
         self._icon_lbl.setStyleSheet(
-            f"color: {COLORS['accent']}; font-size: 16px; border: none;"
+            f"color: {COLORS['accent']}; font-size: {fs(16)}px; border: none;"
         )
         lay.addWidget(self._icon_lbl)
 
         self._msg_lbl = QLabel("")
         self._msg_lbl.setStyleSheet(
-            f"color: {COLORS['text_primary']}; font-size: 14px; border: none;"
+            f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;"
         )
         self._msg_lbl.setWordWrap(True)
         lay.addWidget(self._msg_lbl, stretch=1)
@@ -72,7 +72,7 @@ class ToastWidget(QFrame):
                 color: {COLORS['bg']};
                 border: none;
                 border-radius: 4px;
-                font-size: 13px;
+                font-size: {fs(13)}px;
                 font-weight: bold;
             }}
             QPushButton:hover {{ background: #79c0ff; }}
@@ -88,7 +88,7 @@ class ToastWidget(QFrame):
             f"border-radius: 6px;"
         )
         self._icon_lbl.setStyleSheet(
-            f"color: {color}; font-size: 16px; border: none;"
+            f"color: {color}; font-size: {fs(16)}px; border: none;"
         )
         self.setFixedHeight(50)
         self._visible = True

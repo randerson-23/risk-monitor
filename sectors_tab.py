@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
 
 from data_fetch import SECTOR_NAMES
 from regime import compute_sector_rotation_regime
-from widgets import COLORS, Treemap
+from widgets import COLORS, Treemap, fs
 
 _SECTOR_TICKERS = list(SECTOR_NAMES.keys())
 
@@ -57,23 +57,23 @@ class _SectorSummaryCard(QFrame):
         lay.setSpacing(3)
 
         hdr = QLabel(title)
-        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         lay.addWidget(hdr)
 
         self.lbl_ticker = QLabel("—")
-        self.lbl_ticker.setStyleSheet(f"color: {color}; font-size: 20px; font-weight: bold; border: none;")
+        self.lbl_ticker.setStyleSheet(f"color: {color}; font-size: {fs(20)}px; font-weight: bold; border: none;")
         lay.addWidget(self.lbl_ticker)
 
         self.lbl_name = QLabel("")
-        self.lbl_name.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px; border: none;")
+        self.lbl_name.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; border: none;")
         lay.addWidget(self.lbl_name)
 
         row = QHBoxLayout()
         self.lbl_rs = QLabel("")
-        self.lbl_rs.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 13px; font-weight: bold; border: none;")
+        self.lbl_rs.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         row.addWidget(self.lbl_rs)
         self.lbl_1d = QLabel("")
-        self.lbl_1d.setStyleSheet(f"color: {color}; font-size: 13px; border: none;")
+        self.lbl_1d.setStyleSheet(f"color: {color}; font-size: {fs(13)}px; border: none;")
         row.addWidget(self.lbl_1d)
         row.addStretch()
         lay.addLayout(row)
@@ -103,23 +103,23 @@ class _RotationCard(QFrame):
 
         hdr = QLabel("SECTOR ROTATION")
         hdr.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         lay.addWidget(hdr)
 
         self.lbl_regime = QLabel("—")
         self.lbl_regime.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_regime.setStyleSheet(f"color: {COLORS['na']}; font-size: 20px; font-weight: bold; border: none;")
+        self.lbl_regime.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(20)}px; font-weight: bold; border: none;")
         lay.addWidget(self.lbl_regime)
 
         self.lbl_top = QLabel("")
         self.lbl_top.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_top.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px; border: none;")
+        self.lbl_top.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; border: none;")
         self.lbl_top.setWordWrap(True)
         lay.addWidget(self.lbl_top)
 
         self.lbl_weak = QLabel("")
         self.lbl_weak.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_weak.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px; border: none;")
+        self.lbl_weak.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; border: none;")
         self.lbl_weak.setWordWrap(True)
         lay.addWidget(self.lbl_weak)
         lay.addStretch()
@@ -132,15 +132,15 @@ class _RotationCard(QFrame):
             f"border: 2px solid {color}; border-radius: 8px;"
         )
         self.lbl_regime.setText(regime_info.get("regime", "—"))
-        self.lbl_regime.setStyleSheet(f"color: {color}; font-size: 20px; font-weight: bold; border: none;")
+        self.lbl_regime.setStyleSheet(f"color: {color}; font-size: {fs(20)}px; font-weight: bold; border: none;")
 
         sorted_t = data.get("sorted_by_rs", [])
         if len(sorted_t) >= 3:
             self.lbl_top.setText(f"↑ {' · '.join(sorted_t[:3])}")
-            self.lbl_top.setStyleSheet(f"color: {COLORS['risk_on']}; font-size: 12px; border: none;")
+            self.lbl_top.setStyleSheet(f"color: {COLORS['risk_on']}; font-size: {fs(12)}px; border: none;")
         if len(sorted_t) >= 3:
             self.lbl_weak.setText(f"↓ {' · '.join(list(reversed(sorted_t[-3:])))}")
-            self.lbl_weak.setStyleSheet(f"color: {COLORS['risk_off']}; font-size: 12px; border: none;")
+            self.lbl_weak.setStyleSheet(f"color: {COLORS['risk_off']}; font-size: {fs(12)}px; border: none;")
 
 
 class _SectorRow(QFrame):
@@ -159,23 +159,23 @@ class _SectorRow(QFrame):
 
         self._dot = QLabel("●")
         self._dot.setFixedWidth(14)
-        self._dot.setStyleSheet(f"color: {COLORS['na']}; font-size: 10px; border: none;")
+        self._dot.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(10)}px; border: none;")
         lay.addWidget(self._dot)
 
         self._lbl_ticker = QLabel("")
         self._lbl_ticker.setFixedWidth(46)
-        self._lbl_ticker.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 13px; font-weight: bold; border: none;")
+        self._lbl_ticker.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         lay.addWidget(self._lbl_ticker)
 
         self._lbl_name = QLabel("")
         self._lbl_name.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        self._lbl_name.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 12px; border: none;")
+        self._lbl_name.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; border: none;")
         lay.addWidget(self._lbl_name, stretch=1)
 
         self._lbl_metric = QLabel("")
         self._lbl_metric.setFixedWidth(60)
         self._lbl_metric.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self._lbl_metric.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 13px; font-weight: bold; border: none;")
+        self._lbl_metric.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         lay.addWidget(self._lbl_metric)
 
         self._bar = QProgressBar()
@@ -188,7 +188,7 @@ class _SectorRow(QFrame):
         quad = d.get("quadrant", "Lagging")
         color = _QUADRANT_COLORS.get(quad, COLORS["na"])
 
-        self._dot.setStyleSheet(f"color: {color}; font-size: 10px; border: none;")
+        self._dot.setStyleSheet(f"color: {color}; font-size: {fs(10)}px; border: none;")
         self._lbl_ticker.setText(ticker)
         self._lbl_name.setText(d.get("name", ""))
 
@@ -277,7 +277,7 @@ class SectorsTab(QWidget):
         lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(6)
         hdr = QLabel("SECTOR TREEMAP — 1D %")
-        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         lay.addWidget(hdr)
         self._treemap = Treemap()
         lay.addWidget(self._treemap, stretch=1)
@@ -294,7 +294,7 @@ class SectorsTab(QWidget):
         lay.setSpacing(6)
 
         hdr = QLabel("RELATIVE ROTATION GRAPH")
-        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         lay.addWidget(hdr)
 
         self._rrg_plot = pg.PlotWidget(background=COLORS["card_bg"])
@@ -360,7 +360,7 @@ class SectorsTab(QWidget):
 
         ctrl = QHBoxLayout()
         hdr = QLabel("SECTOR RANKINGS")
-        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         ctrl.addWidget(hdr)
         ctrl.addStretch()
 
@@ -368,7 +368,7 @@ class SectorsTab(QWidget):
         self._sort_combo.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 13px; }}"
+            f"padding: 2px 6px; font-size: {fs(13)}px; }}"
         )
         self._sort_combo.addItems(list(_SORT_KEYS.keys()))
         self._sort_combo.currentIndexChanged.connect(self._reorder_rows)
@@ -412,14 +412,14 @@ class SectorsTab(QWidget):
 
         ctrl = QHBoxLayout()
         lbl = QLabel("Sector:")
-        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         ctrl.addWidget(lbl)
 
         self._chart_combo = QComboBox()
         self._chart_combo.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 13px; }}"
+            f"padding: 2px 6px; font-size: {fs(13)}px; }}"
         )
         for ticker in _SECTOR_TICKERS:
             self._chart_combo.addItem(f"{ticker} — {SECTOR_NAMES[ticker]}", ticker)
@@ -427,7 +427,7 @@ class SectorsTab(QWidget):
         ctrl.addWidget(self._chart_combo)
 
         self._lbl_quadrant = QLabel("")
-        self._lbl_quadrant.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        self._lbl_quadrant.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         ctrl.addWidget(self._lbl_quadrant)
         ctrl.addStretch()
         lay.addLayout(ctrl)
@@ -626,7 +626,7 @@ class SectorsTab(QWidget):
         color = _QUADRANT_COLORS.get(quad, COLORS["accent"])
 
         self._lbl_quadrant.setText(f"[ {quad.upper()} ]")
-        self._lbl_quadrant.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: bold; border: none;")
+        self._lbl_quadrant.setStyleSheet(f"color: {color}; font-size: {fs(13)}px; font-weight: bold; border: none;")
 
         x = np.array([ts.timestamp() for ts in hist.index])
         y = hist.to_numpy(dtype=float)

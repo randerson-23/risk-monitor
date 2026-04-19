@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QVBoxLayout, QWidget)
 
 from regime import compute_macro_regime, compute_macro_regime_history
-from widgets import COLORS, CorrelationHeatmap, MetricCard, RegimeCard, regime_color
+from widgets import COLORS, CorrelationHeatmap, MetricCard, RegimeCard, fs, regime_color
 
 _CHART_OPTIONS = [
     "10Y Treasury", "Yield Curve", "DXY", "Gold", "Oil",
@@ -94,7 +94,7 @@ class MacroTab(QWidget):
         lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(6)
         hdr = QLabel("CROSS-ASSET CORRELATION  ·  60D")
-        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; font-weight: bold; border: none;")
+        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
         lay.addWidget(hdr)
         self._corr_heatmap = CorrelationHeatmap()
         lay.addWidget(self._corr_heatmap, stretch=1)
@@ -135,13 +135,13 @@ class MacroTab(QWidget):
 
         hdr = QLabel("INDICATORS")
         hdr.setStyleSheet(
-            f"color: {COLORS['text_secondary']}; font-size: 14px; font-weight: bold; border: none;"
+            f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; font-weight: bold; border: none;"
         )
         lay.addWidget(hdr)
 
         def _lbl(text: str) -> QLabel:
             l = QLabel(text)
-            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: 14px; border: none;")
+            l.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
             return l
 
         self.lbl_spread    = _lbl("Yield Curve: —")
@@ -209,14 +209,14 @@ class MacroTab(QWidget):
 
         ctrl = QHBoxLayout()
         lbl = QLabel("Chart:")
-        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: 13px; border: none;")
+        lbl.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
         ctrl.addWidget(lbl)
 
         self.chart_selector = QComboBox()
         self.chart_selector.setStyleSheet(
             f"QComboBox {{ background: {COLORS['bg']}; color: {COLORS['text_primary']}; "
             f"border: 1px solid {COLORS['card_border']}; border-radius: 4px; "
-            f"padding: 2px 6px; font-size: 13px; }}"
+            f"padding: 2px 6px; font-size: {fs(13)}px; }}"
         )
         self.chart_selector.addItems(_CHART_OPTIONS)
         self.chart_selector.currentIndexChanged.connect(self._render_chart)
@@ -343,7 +343,7 @@ class MacroTab(QWidget):
         spread = d.get("yield_spread")
         if spread is not None:
             c = _spread_color(spread)
-            self.lbl_spread.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_spread.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             if spread < 0:     desc = "inverted"
             elif spread < 0.5: desc = "flat"
             elif spread < 1.5: desc = "normal"
@@ -353,7 +353,7 @@ class MacroTab(QWidget):
         y10 = d.get("yield_10y")
         if y10 is not None:
             c = _yield_color(y10)
-            self.lbl_yield10.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_yield10.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_yield10.setText(f"10Y Yield: {y10:.3f}%")
 
         y3m = d.get("yield_3m")
@@ -364,7 +364,7 @@ class MacroTab(QWidget):
         dxy_pct   = d.get("dxy_pct_from_200ma")
         if dxy_above is not None and dxy_pct is not None:
             c = _dxy_color(dxy_above)
-            self.lbl_dxy.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_dxy.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_dxy.setText(
                 f"DXY vs 200MA: {'ABOVE' if dxy_above else 'BELOW'} ({dxy_pct:+.1f}%)"
             )
@@ -373,7 +373,7 @@ class MacroTab(QWidget):
         oil_pct   = d.get("oil_pct_from_200ma")
         if oil_above is not None and oil_pct is not None:
             c = regime_color(oil_above)
-            self.lbl_oil.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_oil.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_oil.setText(
                 f"Oil vs 200MA: {'ABOVE' if oil_above else 'BELOW'} ({oil_pct:+.1f}%)"
             )
@@ -389,7 +389,7 @@ class MacroTab(QWidget):
         hyg_pct   = d.get("hyg_pct_from_200ma")
         if hyg_above is not None and hyg_pct is not None:
             c = COLORS["risk_on"] if hyg_above else COLORS["risk_off"]
-            self.lbl_hyg.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_hyg.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_hyg.setText(
                 f"HYG vs 200MA: {'ABOVE' if hyg_above else 'BELOW'} ({hyg_pct:+.1f}%)"
             )
@@ -400,31 +400,31 @@ class MacroTab(QWidget):
             elif stlfsi > 0:   c = COLORS["neutral"]
             elif stlfsi < -0.5: c = COLORS["risk_on"]
             else:               c = COLORS["text_primary"]
-            self.lbl_stlfsi.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_stlfsi.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_stlfsi.setText(f"Financial Stress: {stlfsi:+.3f}")
 
         move = d.get("move")
         if move is not None:
             c = _move_color(move)
-            self.lbl_move.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_move.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_move.setText(f"MOVE Index: {move:.0f}")
 
         hy_spread = d.get("hy_spread")
         if hy_spread is not None:
             c = _hy_spread_color(hy_spread)
-            self.lbl_hy_spread.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_hy_spread.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_hy_spread.setText(f"HY Credit Spread: {hy_spread:.2f}%")
 
         be5y = d.get("breakeven_5y")
         if be5y is not None:
             c = COLORS["risk_off"] if be5y > 3.0 else (COLORS["risk_on"] if be5y < 2.0 else COLORS["text_primary"])
-            self.lbl_breakeven.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_breakeven.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_breakeven.setText(f"5Y Breakeven: {be5y:.2f}%")
 
         real_yld = d.get("real_yield_10y")
         if real_yld is not None:
             c = COLORS["risk_off"] if real_yld > 2.5 else (COLORS["risk_on"] if real_yld < 1.0 else COLORS["text_primary"])
-            self.lbl_real_yld.setStyleSheet(f"color: {c}; font-size: 14px; border: none;")
+            self.lbl_real_yld.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_real_yld.setText(f"10Y Real Yield: {real_yld:.2f}%")
 
     def _update_cards(self, d: dict) -> None:
