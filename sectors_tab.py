@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
 
 from data_fetch import SECTOR_NAMES
 from regime import compute_sector_rotation_regime
-from widgets import COLORS, apply_font_delta_offset, font_delta, fs
+from widgets import COLORS, Treemap, fs
 
 _SECTOR_TICKERS = list(SECTOR_NAMES.keys())
 
@@ -262,9 +262,26 @@ class SectorsTab(QWidget):
     def _build_middle_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setSpacing(8)
+        row.addWidget(self._build_treemap_panel(), stretch=1)
         row.addWidget(self._build_rrg_panel(), stretch=1)
         row.addWidget(self._build_rankings_panel(), stretch=1)
         return row
+
+    def _build_treemap_panel(self) -> QFrame:
+        frame = QFrame()
+        frame.setStyleSheet(
+            f"background: {COLORS['card_bg']}; "
+            f"border: 1px solid {COLORS['card_border']}; border-radius: 8px;"
+        )
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(10, 8, 10, 8)
+        lay.setSpacing(6)
+        hdr = QLabel("SECTOR TREEMAP — 1D %")
+        hdr.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
+        lay.addWidget(hdr)
+        self._treemap = Treemap()
+        lay.addWidget(self._treemap, stretch=1)
+        return frame
 
     def _build_rrg_panel(self) -> QFrame:
         frame = QFrame()
@@ -452,6 +469,7 @@ class SectorsTab(QWidget):
 
         self._reorder_rows()
         self._render_rrg()
+        self._render_treemap()
 
         # Default chart to top-ranked sector
         if sorted_t:
@@ -490,6 +508,21 @@ class SectorsTab(QWidget):
                     sorted_tickers.index(ticker), row
                 )
                 row.update(ticker, sectors[ticker], sort_key)
+
+    def _render_treemap(self) -> None:
+        sectors = self._data.get("sectors", {})
+        if not sectors:
+            return
+        cells = []
+        for ticker in _SECTOR_TICKERS:
+            d = sectors.get(ticker, {})
+            cells.append({
+                "label":    ticker,
+                "sublabel": d.get("name", ""),
+                "weight":   1.0,  # equal weight (no market cap available)
+                "color_value": d.get("pct_1d"),
+            })
+        self._treemap.set_data(cells)
 
     def _on_row_click(self, ticker: str) -> None:
         for i in range(self._chart_combo.count()):

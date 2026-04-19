@@ -6,9 +6,9 @@ from PyQt6.QtGui import QBrush, QColor, QPen
 from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QSizePolicy, QVBoxLayout, QWidget)
 
+from forecast_panel import VolForecastPanel
 from regime import compute_equity_regime, compute_equity_regime_history
-from widgets import (COLORS, GaugeWidget, MetricCard, RegimeCard,
-                     apply_font_delta_offset, font_delta, fs, regime_color)
+from widgets import COLORS, RiskSentimentWidget, MetricCard, RegimeCard, TearOffFrame, fs, regime_color
 
 # ── Chart metadata ─────────────────────────────────────────────────────────────
 
@@ -69,7 +69,15 @@ class EquityTab(QWidget):
 
         root.addLayout(self._build_top_row())
         root.addLayout(self._build_cards_row())
-        root.addWidget(self._build_chart_panel(), stretch=1)
+
+        mid = QHBoxLayout()
+        mid.setSpacing(8)
+        mid.addWidget(TearOffFrame("equity.chart", self._build_chart_panel(),
+                                    "Equity Chart"), stretch=3)
+        self.vol_panel = VolForecastPanel("SPX Vol Forecast (GARCH)")
+        mid.addWidget(TearOffFrame("equity.vol", self.vol_panel,
+                                    "SPX Vol Forecast"), stretch=2)
+        root.addLayout(mid, stretch=1)
 
     def _build_top_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -78,7 +86,7 @@ class EquityTab(QWidget):
         self.regime_card = RegimeCard()
         row.addWidget(self.regime_card, stretch=1)
 
-        self.gauge = GaugeWidget("CNN Fear & Greed")
+        self.gauge = RiskSentimentWidget("CNN Fear & Greed")
         row.addWidget(self.gauge, stretch=2)
 
         row.addWidget(self._build_stats_panel(), stretch=1)
@@ -109,10 +117,8 @@ class EquityTab(QWidget):
         self.lbl_vix_reg  = _lbl("VIX Regime: —")
         self.lbl_breadth  = _lbl("Breadth: —")
         self.lbl_pc       = _lbl("Put/Call: —")
-        self.lbl_spx_vf   = _lbl("SPX Vol Forecast: —")
 
-        for l in (self.lbl_spx_ma, self.lbl_vix_reg, self.lbl_breadth,
-                  self.lbl_pc, self.lbl_spx_vf):
+        for l in (self.lbl_spx_ma, self.lbl_vix_reg, self.lbl_breadth, self.lbl_pc):
             lay.addWidget(l)
         lay.addStretch()
         return frame
@@ -127,11 +133,9 @@ class EquityTab(QWidget):
         self.card_breadth = MetricCard("BREADTH")
         self.card_spx     = MetricCard("S&P 500")
         self.card_cnn     = MetricCard("CNN F&G")
-        self.card_spx_vf  = MetricCard("SPX VOL FORECAST")
 
         for c in (self.card_vix, self.card_skew, self.card_pc,
-                  self.card_breadth, self.card_spx, self.card_cnn,
-                  self.card_spx_vf):
+                  self.card_breadth, self.card_spx, self.card_cnn):
             row.addWidget(c)
         return row
 
@@ -174,6 +178,10 @@ class EquityTab(QWidget):
         return frame
 
     # ── Data update ────────────────────────────────────────────────────────────
+
+    def update_forecast(self, fc: dict) -> None:
+        """Render the GARCH vol/cone result against the cached SPX history."""
+        self.vol_panel.update_forecast(fc, price_history=self._data.get("spx_hist"))
 
     def update_data(self, data: dict) -> None:
         self._data = data
@@ -221,14 +229,6 @@ class EquityTab(QWidget):
             self.lbl_pc.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_pc.setText(f"Put/Call: {pc:.3f}")
 
-        vf = d.get("spx_vol_forecast")
-        if vf is not None:
-            rv = d.get("spx_rv21")
-            c = COLORS["risk_off"] if vf > 25 else (COLORS["risk_on"] if vf < 12 else COLORS["neutral"])
-            self.lbl_spx_vf.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
-            rv_str = f"  (rv21 {rv:.1f}%)" if rv is not None else ""
-            self.lbl_spx_vf.setText(f"SPX Vol Forecast: {vf:.1f}%{rv_str}")
-
     def _update_cards(self, d: dict) -> None:
         vix = d.get("vix")
         if vix is not None:
@@ -236,11 +236,15 @@ class EquityTab(QWidget):
             arrow = "▲" if vix > prev else "▼" if vix < prev else ""
             self.card_vix.set_value(f"{vix:.1f} {arrow}".strip(),
                                     f"prev {prev:.1f}", _vix_color(vix))
+            if d.get("vix_hist") is not None:
+                self.card_vix.set_sparkline(list(d["vix_hist"].tail(60).values))
 
         skew = d.get("skew")
         if skew is not None:
             c = COLORS["risk_off"] if skew > 145 else (COLORS["risk_on"] if skew < 120 else COLORS["neutral"])
             self.card_skew.set_value(f"{skew:.1f}", "tail risk", c)
+            if d.get("skew_hist") is not None:
+                self.card_skew.set_sparkline(list(d["skew_hist"].tail(60).values))
 
         pc = d.get("put_call_ratio")
         if pc is not None:
@@ -249,22 +253,23 @@ class EquityTab(QWidget):
         b = d.get("breadth_pct")
         if b is not None:
             self.card_breadth.set_value(f"{b:.1f}%", "above 200MA", _breadth_color(b))
+            if d.get("breadth_hist") is not None:
+                self.card_breadth.set_sparkline(list(d["breadth_hist"].tail(60).values))
 
         spx = d.get("spx")
         if spx is not None:
             ma  = d.get("spx_ma200", 0)
             c   = regime_color(d.get("spx_above_200ma"))
             self.card_spx.set_value(f"{spx:,.0f}", f"ma200 {ma:,.0f}", c)
+            if d.get("spx_hist") is not None:
+                self.card_spx.set_sparkline(list(d["spx_hist"].tail(60).values))
 
         fg = d.get("cnn_fear_greed")
         if fg is not None:
             self.card_cnn.set_value(f"{fg:.0f}",
                                     d.get("cnn_fear_greed_rating", ""), _fg_color(fg))
-
-        vf = d.get("spx_vol_forecast")
-        if vf is not None:
-            c = COLORS["risk_off"] if vf > 25 else (COLORS["risk_on"] if vf < 12 else COLORS["neutral"])
-            self.card_spx_vf.set_value(f"{vf:.1f}%", "EWMA annualized", c)
+            if d.get("cnn_fg_hist") is not None:
+                self.card_cnn.set_sparkline(list(d["cnn_fg_hist"].tail(60).values))
 
     def _store_chart_series(self, d: dict) -> None:
         self._chart_series = {

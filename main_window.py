@@ -1,6 +1,6 @@
 import os
 
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtCore import Qt, QSize, QSettings, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PyQt6.QtWidgets import (QApplication, QDialog, QDialogButtonBox,
                               QHBoxLayout, QLabel, QMainWindow, QPushButton,
@@ -10,13 +10,15 @@ from ai_panel import AIPanel
 from claude_tab import ClaudeTab
 from crypto_tab import CryptoTab
 from equity_tab import EquityTab
-from history_db import log_snapshot
+from history_db import log_macro_forward, log_snapshot, log_vol_forecast
 from macro_tab import MacroTab
 from notifications import NotificationManager, ToastWidget
 from portfolio_tab import PortfolioTab
 from sectors_tab import SectorsTab
-from widgets import COLORS, apply_font_delta_offset, fs, set_font_delta
-from workers import CryptoWorker, EquityWorker, MacroWorker, SectorWorker
+from sentiment_tab import SentimentTab
+from widgets import COLORS, HeaderRegimeBadge, LatencyDot, apply_font_delta_offset, fs, set_font_delta
+from workers import (CryptoWorker, EquityWorker, ForecastWorker, MacroForwardWorker,
+                       MacroWorker, SectorWorker, SentimentWorker)
 
 _REFRESH_MS = 5 * 60 * 1000  # 5 minutes
 _MIN_FONT = 7
@@ -103,15 +105,37 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Risk Monitor")
         self.setMinimumSize(1060, 780)
         self._pending = set()
-        self._font_size = _DEFAULT_FONT
-        self._applied_font_delta = 0
         self._sector_data: dict = {}
+        self._settings = QSettings("RiskMonitor", "Dashboard")
+        self._font_size = int(self._settings.value("ui/font_size", _DEFAULT_FONT))
+        # Sync the global font delta so every stylesheet built via fs()
+        # starts at the persisted size.
+        set_font_delta(self._font_size - _DEFAULT_FONT)
+        self._applied_font_delta = self._font_size - _DEFAULT_FONT
         self._setup_ui()
         self._setup_font_shortcuts()
         self._setup_notifications()
         self._setup_workers()
         self._setup_timer()
+        self._restore_window()
+        self._apply_font()
         self.refresh_all()
+
+    def _restore_window(self) -> None:
+        geom = self._settings.value("ui/geometry")
+        if geom is not None:
+            try:
+                self.restoreGeometry(geom)
+            except Exception:
+                pass
+
+    def closeEvent(self, event):
+        try:
+            self._settings.setValue("ui/geometry", self.saveGeometry())
+            self._settings.setValue("ui/font_size", self._font_size)
+        except Exception:
+            pass
+        super().closeEvent(event)
 
     # ── UI ─────────────────────────────────────────────────────────────────────
 
@@ -171,7 +195,11 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.macro_tab,     "Macro")
         self.tabs.addTab(self.portfolio_tab, "Portfolio")
         self.tabs.addTab(self.sectors_tab,   "Sectors")
+        self.sentiment_tab = SentimentTab()
+        self.sentiment_tab.analysis_requested.connect(self._run_sentiment_analysis)
+        self.tabs.addTab(self.sentiment_tab, "Consumer Sentiment")
         self.claude_tab = ClaudeTab()
+        self.claude_tab.followup_requested.connect(self._on_followup_request)
         self.tabs.addTab(self.claude_tab,    "Claude")
         self.tabs.setIconSize(QSize(14, 14))
         content_row.addWidget(self.tabs, stretch=1)
@@ -196,7 +224,21 @@ class MainWindow(QMainWindow):
             f"color: {COLORS['text_primary']}; font-size: {fs(15)}px; font-weight: bold; letter-spacing: 2px;"
         )
         lay.addWidget(title)
+
+        # Aggregate regime badge (right of title)
+        self.regime_badge = HeaderRegimeBadge()
+        lay.addSpacing(12)
+        lay.addWidget(self.regime_badge)
+
         lay.addStretch()
+
+        # Latency dots — one per data source
+        self._latency_dots: dict[str, LatencyDot] = {}
+        for src in ("equity", "crypto", "macro", "sectors"):
+            dot = LatencyDot(src)
+            self._latency_dots[src] = dot
+            lay.addWidget(dot)
+            lay.addSpacing(6)
 
         self.lbl_updated = QLabel("Not yet loaded")
         self.lbl_updated.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(15)}px;")
@@ -220,7 +262,7 @@ class MainWindow(QMainWindow):
         self.btn_claude.clicked.connect(self._ask_claude)
         lay.addWidget(self.btn_claude)
 
-        # Font size controls (A-  A  A+)
+        # Font size controls (A−  A  A+)
         font_btn_style = f"""
             QPushButton {{
                 background: transparent;
@@ -323,8 +365,58 @@ class MainWindow(QMainWindow):
     def _on_claude_done(self, *args):
         self.btn_claude.setEnabled(True)
         self.btn_claude.setText("🤖  Ask Claude")
-        # Refresh the Claude history tab so the new response appears
         self.claude_tab.reload()
+
+    # ── Follow-up from Claude tab ──────────────────────────────────────────────
+
+    def _on_followup_request(self, text: str):
+        """Called when the user submits a follow-up in the Claude tab."""
+        snap = self.portfolio_tab.get_snapshot_data()
+        if snap is None:
+            self.claude_tab.on_followup_error()
+            return
+
+        equity_data = self.equity_tab._data if hasattr(self.equity_tab, "_data") else {}
+        crypto_data = self.crypto_tab._data if hasattr(self.crypto_tab, "_data") else {}
+        macro_data  = self.macro_tab._data if hasattr(self.macro_tab, "_data") else {}
+
+        self._ai_panel.request_analysis(snap, equity_data, crypto_data, macro_data,
+                                        user_context=text,
+                                        sector_data=self._sector_data or None)
+
+        panel = self._ai_panel
+        if panel._worker is not None:
+            panel._worker.finished.connect(self._on_followup_done)
+            panel._worker.error.connect(self._on_followup_failed)
+
+    def _on_followup_done(self, *args):
+        self.claude_tab.on_followup_complete()
+
+    def _on_followup_failed(self, *args):
+        self.claude_tab.on_followup_error()
+
+    # ── Consumer sentiment ─────────────────────────────────────────────────────
+
+    def _run_sentiment_analysis(self):
+        """Start the sentiment worker when the tab requests it."""
+        if self._sentiment_worker.isRunning():
+            return
+        self._sentiment_worker.start()
+
+    def _on_sentiment_data(self, result: dict):
+        self.sentiment_tab.on_analysis_complete(result)
+        # Feed the score into the regime badge as a fifth source
+        score = result.get("sentiment_score", "NEUTRAL").upper()
+        regime_map = {
+            "BULLISH": ("RISK-ON",  COLORS["risk_on"]),
+            "NEUTRAL": ("NEUTRAL",  COLORS["neutral"]),
+            "BEARISH": ("RISK-OFF", COLORS["risk_off"]),
+        }
+        regime, color = regime_map.get(score, ("NEUTRAL", COLORS["neutral"]))
+        self.regime_badge.update_regime("sentiment", regime, color)
+
+    def _on_sentiment_error(self, msg: str):
+        self.sentiment_tab.on_analysis_error(msg)
 
     # ── Font scaling (Ctrl+Plus / Ctrl+Minus / Ctrl+0) ──────────────────────────
 
@@ -351,20 +443,18 @@ class MainWindow(QMainWindow):
         self._apply_font()
 
     def _apply_font(self):
-        # Keep widgets.fs() in sync so newly-built labels pick up the right size.
+        # Keep widgets.fs() in sync so newly-built stylesheets pick up the
+        # right size, then walk every widget and shift currently-applied
+        # font-size values by the delta vs. the previous call.
         new_delta = self._font_size - _DEFAULT_FONT
-        offset = new_delta - self._applied_font_delta
+        offset = new_delta - getattr(self, "_applied_font_delta", 0)
         set_font_delta(new_delta)
 
         app = QApplication.instance()
         if app:
             app.setFont(QFont("Segoe UI", self._font_size))
 
-        # Walking from MainWindow covers every descendant widget (header,
-        # tabs, AI panel, toast). Custom-painted widgets repaint because
-        # apply_font_delta_offset calls .update() on every widget.
         apply_font_delta_offset(self, offset)
-
         self._applied_font_delta = new_delta
 
     # ── Notifications ──────────────────────────────────────────────────────────
@@ -395,11 +485,32 @@ class MainWindow(QMainWindow):
         self._sec_worker.data_ready.connect(self._on_sector_data)
         self._sec_worker.error.connect(lambda e: self._on_error("sectors", e))
 
+        self._fwd_worker = MacroForwardWorker()
+        self._fwd_worker.data_ready.connect(self._on_forward_data)
+        self._fwd_worker.error.connect(lambda e: self._on_error("forward", e))
+
+        self._sentiment_worker = SentimentWorker()
+        self._sentiment_worker.data_ready.connect(self._on_sentiment_data)
+        self._sentiment_worker.error.connect(self._on_sentiment_error)
+
+        # GARCH forecast workers — spawned per refresh, keyed by tag
+        self._fc_workers: dict[str, ForecastWorker] = {}
+
     def _setup_timer(self):
         self._timer = QTimer(self)
         self._timer.setInterval(_REFRESH_MS)
         self._timer.timeout.connect(self.refresh_all)
         self._timer.start()
+
+        # 1s ticker drives latency-dot color transitions even between refreshes
+        self._latency_timer = QTimer(self)
+        self._latency_timer.setInterval(1000)
+        self._latency_timer.timeout.connect(self._tick_latency_dots)
+        self._latency_timer.start()
+
+    def _tick_latency_dots(self):
+        for dot in self._latency_dots.values():
+            dot.tick()
 
     # ── Refresh ────────────────────────────────────────────────────────────────
 
@@ -427,35 +538,78 @@ class MainWindow(QMainWindow):
             self._pending.add("sectors")
             self._sec_worker.start()
 
+        if not self._fwd_worker.isRunning():
+            self._pending.add("forward")
+            self._fwd_worker.start()
+
     def _on_equity_data(self, data: dict):
         self._pending.discard("equity")
+        self._latency_dots["equity"].mark()
         self.equity_tab.update_data(data)
         from regime import compute_equity_regime
         r = compute_equity_regime(data)
         self.tabs.setTabIcon(self.tabs.indexOf(self.equity_tab),
                              self._regime_dot_icon(r["color"]))
+        self.regime_badge.update_regime("equity", r["regime"], r["color"])
+        self._spawn_forecast("spx", data.get("spx_hist"))
         self._finish_if_done(data.get("timestamp"))
 
     def _on_crypto_data(self, data: dict):
         self._pending.discard("crypto")
+        self._latency_dots["crypto"].mark()
         self.crypto_tab.update_data(data)
         from regime import compute_crypto_regime
         r = compute_crypto_regime(data)
         self.tabs.setTabIcon(self.tabs.indexOf(self.crypto_tab),
                              self._regime_dot_icon(r["color"]))
+        self.regime_badge.update_regime("crypto", r["regime"], r["color"])
+        self._spawn_forecast("btc", data.get("btc_hist"))
         self._finish_if_done(data.get("timestamp"))
+
+    def _on_forward_data(self, data: dict):
+        self._pending.discard("forward")
+        self.macro_tab.update_forward_risk(data)
+        log_macro_forward(data)
+        # Latency dot piggybacks on the macro source
+        self._latency_dots["macro"].mark()
+        self._finish_if_done(data.get("timestamp"))
+
+    def _spawn_forecast(self, tag: str, prices) -> None:
+        if prices is None or len(prices) < 250:
+            return
+        existing = self._fc_workers.get(tag)
+        if existing is not None and existing.isRunning():
+            return
+        w = ForecastWorker(tag, prices)
+        w.data_ready.connect(self._on_forecast_ready)
+        w.error.connect(lambda e: print(f"[forecast] {e}"))
+        self._fc_workers[tag] = w
+        w.start()
+
+    def _on_forecast_ready(self, payload: dict) -> None:
+        tag = payload.get("tag")
+        fc  = payload.get("forecast", {})
+        if tag == "spx":
+            self.equity_tab.update_forecast(fc)
+            log_vol_forecast("SPX", fc)
+        elif tag == "btc":
+            self.crypto_tab.update_forecast(fc)
+            log_vol_forecast("BTC", fc)
 
     def _on_macro_data(self, data: dict):
         self._pending.discard("macro")
+        self._latency_dots["macro"].mark()
         self.macro_tab.update_data(data)
         from regime import compute_macro_regime
         r = compute_macro_regime(data)
         self.tabs.setTabIcon(self.tabs.indexOf(self.macro_tab),
                              self._regime_dot_icon(r["color"]))
+        self.regime_badge.update_regime("macro", r["regime"], r["color"])
         self._finish_if_done(data.get("timestamp"))
 
     def _on_sector_data(self, data: dict):
         self._pending.discard("sectors")
+        self._latency_dots["sectors"].mark()
         self._sector_data = data
         self.sectors_tab.update_data(data)
         rot = data.get("rotation_regime", "MIXED")

@@ -729,50 +729,57 @@ def fetch_macro_data() -> dict:
     if not tbill_1m.empty:
         result["yield_1m"] = round(float(tbill_1m.iloc[-1]), 3)
 
-    # Chicago Fed National Financial Conditions Index (weekly)
-    nfci = _fetch_fred_series("NFCI")
-    if not nfci.empty:
-        result["nfci"] = round(float(nfci.iloc[-1]), 3)
-        result["nfci_hist"] = nfci
-
-    # Chicago Fed Adjusted NFCI — conditions ex macro/credit cycle (weekly)
-    anfci = _fetch_fred_series("ANFCI")
-    if not anfci.empty:
-        result["anfci"] = round(float(anfci.iloc[-1]), 3)
-        result["anfci_hist"] = anfci
-
-    # St. Louis Fed Smoothed U.S. Recession Probabilities (Chauvet-Piger, monthly %)
-    rec_stl = _fetch_fred_series("RECPROUSM156N")
-    if not rec_stl.empty:
-        result["recession_stl_smooth"] = round(float(rec_stl.iloc[-1]), 2)
-        result["recession_stl_smooth_hist"] = rec_stl
-
-    # NY Fed 12-month-ahead recession probability — Estrella-Mishkin probit
-    # P(recession) = Φ(-0.5333 - 0.5685 * avg(10Y − 3M) over trailing quarter)
-    try:
-        h10 = result.get("yield_10y_hist")
-        h3m = result.get("yield_3m_hist")
-        if h10 is not None and h3m is not None and not h10.empty and not h3m.empty:
-            a = h10.copy(); b = h3m.copy()
-            if a.index.tz is not None: a.index = a.index.tz_localize(None)
-            if b.index.tz is not None: b.index = b.index.tz_localize(None)
-            a.index = a.index.normalize(); b.index = b.index.normalize()
-            spread = (a - b).dropna()
-            if not spread.empty:
-                # Quarterly average of the spread (approx 63 trading days)
-                avg_spread = float(spread.tail(63).mean())
-                z = -0.5333 - 0.5685 * avg_spread
-                result["recession_ny_fed12"] = round(_norm_cdf(z) * 100.0, 2)
-                # Historical series for chart
-                prob_hist = spread.rolling(63, min_periods=20).mean().apply(
-                    lambda s: _norm_cdf(-0.5333 - 0.5685 * s) * 100.0
-                ).dropna()
-                if not prob_hist.empty:
-                    result["recession_ny_fed12_hist"] = prob_hist
-    except Exception:
-        pass
-
     result["timestamp"] = datetime.now()
+    return result
+
+
+# ── Macro: forward-risk (recession prob + financial conditions) ───────────────
+
+def fetch_forward_risk_data() -> dict:
+    """FRED-driven forward-looking macro: NY Fed yield-curve recession prob,
+    St Louis Fed smoothed recession prob, Chicago Fed NFCI / ANFCI."""
+    from forecasting import ny_fed_recession_history
+
+    result: dict = {"timestamp": datetime.now()}
+
+    # NY Fed: derive from 10Y-3M spread series (DGS10 - DGS3MO).
+    try:
+        t10 = _fetch_fred_series("DGS10",  start="2000-01-01")
+        t3m = _fetch_fred_series("DGS3MO", start="2000-01-01")
+        if not t10.empty and not t3m.empty:
+            spread = (t10 - t3m).dropna()
+            prob_hist = ny_fed_recession_history(spread) * 100  # %
+            result["ny_fed_spread_pct"]   = round(float(spread.iloc[-1]), 3)
+            result["ny_fed_recession_pct"] = round(float(prob_hist.iloc[-1]), 1)
+            # Last 24 months as sparkline / chart
+            result["ny_fed_hist"] = prob_hist.tail(24 * 30)
+    except Exception as exc:
+        result["ny_fed_error"] = str(exc)
+
+    # St Louis Fed smoothed recession probability (monthly, %)
+    try:
+        rp = _fetch_fred_series("RECPROUSM156N", start="2000-01-01")
+        if not rp.empty:
+            result["stl_recession_pct"] = round(float(rp.iloc[-1]), 1)
+            result["stl_recession_hist"] = rp.tail(24)
+    except Exception as exc:
+        result["stl_error"] = str(exc)
+
+    # Chicago Fed Financial Conditions Index (weekly, z-score)
+    try:
+        nfci  = _fetch_fred_series("NFCI",  start="2010-01-01")
+        anfci = _fetch_fred_series("ANFCI", start="2010-01-01")
+        if not nfci.empty:
+            result["nfci"]      = round(float(nfci.iloc[-1]), 3)
+            result["nfci_12w"]  = (round(float(nfci.iloc[-1] - nfci.iloc[-12]), 3)
+                                   if len(nfci) >= 12 else None)
+            result["nfci_hist"] = nfci.tail(52 * 2)  # ~2y weekly
+        if not anfci.empty:
+            result["anfci"]      = round(float(anfci.iloc[-1]), 3)
+            result["anfci_hist"] = anfci.tail(52 * 2)
+    except Exception as exc:
+        result["nfci_error"] = str(exc)
+
     return result
 
 

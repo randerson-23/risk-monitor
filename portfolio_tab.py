@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
 from regime import (NEUTRAL, REGIME_COLORS, RISK_OFF, RISK_ON,
                     compute_crypto_regime, compute_equity_regime,
                     compute_macro_regime)
-from widgets import COLORS, CycleClockWidget, apply_font_delta_offset, font_delta, fs
+from widgets import COLORS, CycleClockWidget, fs
 
 # ── Continuous allocation functions ──────────────────────────────────────────
 

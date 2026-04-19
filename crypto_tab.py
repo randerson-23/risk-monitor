@@ -8,9 +8,9 @@ from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (QComboBox, QFrame, QHBoxLayout, QLabel,
                               QVBoxLayout, QWidget)
 
+from forecast_panel import VolForecastPanel
 from regime import compute_crypto_regime, compute_crypto_regime_history
-from widgets import (COLORS, GaugeWidget, MetricCard, RegimeCard,
-                     apply_font_delta_offset, font_delta, fs, regime_color)
+from widgets import COLORS, RiskSentimentWidget, MetricCard, RegimeCard, TearOffFrame, fs, regime_color
 
 _CHART_OPTIONS = ["BTC Price", "30d Realized Vol", "Hash Rate", "Funding Rate", "Open Interest",
                   "MVRV", "Net Liquidity", "US M2", "BTC Dominance", "Rainbow Chart"]
@@ -77,7 +77,15 @@ class CryptoTab(QWidget):
         root.addLayout(self._build_top_row())
         root.addLayout(self._build_cards_row())
         root.addLayout(self._build_onchain_row())
-        root.addWidget(self._build_chart_panel(), stretch=1)
+
+        mid = QHBoxLayout()
+        mid.setSpacing(8)
+        mid.addWidget(TearOffFrame("crypto.chart", self._build_chart_panel(),
+                                    "Bitcoin Chart"), stretch=3)
+        self.vol_panel = VolForecastPanel("BTC Vol Forecast (GARCH)")
+        mid.addWidget(TearOffFrame("crypto.vol", self.vol_panel,
+                                    "BTC Vol Forecast"), stretch=2)
+        root.addLayout(mid, stretch=1)
 
     def _build_top_row(self) -> QHBoxLayout:
         row = QHBoxLayout()
@@ -86,7 +94,7 @@ class CryptoTab(QWidget):
         self.regime_card = RegimeCard()
         row.addWidget(self.regime_card, stretch=1)
 
-        self.gauge = GaugeWidget("Crypto Fear & Greed")
+        self.gauge = RiskSentimentWidget("Crypto Fear & Greed")
         row.addWidget(self.gauge, stretch=2)
 
         row.addWidget(self._build_stats_panel(), stretch=1)
@@ -120,12 +128,11 @@ class CryptoTab(QWidget):
         self.lbl_mom90   = _lbl("90d Momentum: —")
         self.lbl_dom     = _lbl("BTC Dominance: —")
         self.lbl_rv      = _lbl("30d Realized Vol: —")
-        self.lbl_btc_vf  = _lbl("BTC Vol Forecast: —")
         self.lbl_mvrv    = _lbl("MVRV: —")
 
         for l in (self.lbl_btc_ma, self.lbl_btc_wma, self.lbl_ath,
                   self.lbl_pi, self.lbl_mom90, self.lbl_dom, self.lbl_rv,
-                  self.lbl_btc_vf, self.lbl_mvrv):
+                  self.lbl_mvrv):
             lay.addWidget(l)
         lay.addStretch()
         return frame
@@ -138,10 +145,8 @@ class CryptoTab(QWidget):
         self.card_fg     = MetricCard("FEAR & GREED")
         self.card_dom    = MetricCard("BTC DOM")
         self.card_rv     = MetricCard("REALIZED VOL")
-        self.card_btc_vf = MetricCard("BTC VOL FORECAST")
 
-        for c in (self.card_btc, self.card_fg, self.card_dom, self.card_rv,
-                  self.card_btc_vf):
+        for c in (self.card_btc, self.card_fg, self.card_dom, self.card_rv):
             row.addWidget(c)
         return row
 
@@ -260,6 +265,9 @@ class CryptoTab(QWidget):
 
     # ── Data update ────────────────────────────────────────────────────────────
 
+    def update_forecast(self, fc: dict) -> None:
+        self.vol_panel.update_forecast(fc, price_history=self._data.get("btc_hist"))
+
     def update_data(self, data: dict) -> None:
         self._data = data
         regime = compute_crypto_regime(data)
@@ -335,12 +343,6 @@ class CryptoTab(QWidget):
             self.lbl_rv.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
             self.lbl_rv.setText(f"30d Realized Vol: {rv:.1f}%")
 
-        vf = d.get("btc_vol_forecast")
-        if vf is not None:
-            c = _rv_color(vf)
-            self.lbl_btc_vf.setStyleSheet(f"color: {c}; font-size: {fs(14)}px; border: none;")
-            self.lbl_btc_vf.setText(f"BTC Vol Forecast: {vf:.1f}%")
-
         mvrv = d.get("mvrv")
         if mvrv is not None:
             if mvrv < 1.0:   c = COLORS["risk_on"]
@@ -371,10 +373,6 @@ class CryptoTab(QWidget):
         rv = d.get("btc_rv30")
         if rv is not None:
             self.card_rv.set_value(f"{rv:.1f}%", "annualized", _rv_color(rv))
-
-        vf = d.get("btc_vol_forecast")
-        if vf is not None:
-            self.card_btc_vf.set_value(f"{vf:.1f}%", "EWMA annualized", _rv_color(vf))
 
     def _update_network_labels(self, d: dict) -> None:
         hr = d.get("hash_rate")

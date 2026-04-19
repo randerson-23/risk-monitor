@@ -370,6 +370,26 @@ def compute_macro_regime(data: dict) -> dict:
         else:
             factors.append(f"HY Spread {hy_spread:.2f}% — normal (0)")
 
+    # Chicago Fed NFCI (forward-looking financial conditions; weekly z-score)
+    nfci = data.get("nfci")
+    if nfci is not None:
+        if nfci > 0.5:
+            score -= 1; factors.append(f"NFCI {nfci:+.2f} — tight financial conditions (−1)")
+        elif nfci < -0.5:
+            score += 1; factors.append(f"NFCI {nfci:+.2f} — loose financial conditions (+1)")
+        else:
+            factors.append(f"NFCI {nfci:+.2f} — neutral (0)")
+
+    # NY Fed yield-curve recession probability (12-mo ahead, %)
+    ny_prob = data.get("ny_fed_recession_pct")
+    if ny_prob is not None:
+        if ny_prob > 60:
+            score -= 2; factors.append(f"NY Fed recession prob {ny_prob:.0f}% — high (−2)")
+        elif ny_prob > 40:
+            score -= 1; factors.append(f"NY Fed recession prob {ny_prob:.0f}% — elevated (−1)")
+        else:
+            factors.append(f"NY Fed recession prob {ny_prob:.0f}% — low (0)")
+
     if score >= 2:
         regime = RISK_ON
     elif score <= -2:
