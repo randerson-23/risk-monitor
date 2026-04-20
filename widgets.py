@@ -266,6 +266,203 @@ class RegimeCard(QWidget):
         p.drawRoundedRect(10, h - 14, w - 20, 6, 3, 3)
 
 
+# ── Regime Scoreboard (4-cell) ────────────────────────────────────────────────
+
+class RegimeCell(QWidget):
+    """One cell of the top-of-page regime scoreboard.
+
+    Layout:
+        [KICKER LABEL]                [SCORE +n / +max]
+        [ gauge ]   [ VERDICT ]
+                    [ sub caption ]
+        [───────── 4px meter ─────────]
+    """
+
+    def __init__(self, label: str, parent=None):
+        super().__init__(parent)
+        self._label = label.upper()
+        self._score: int | None = None
+        self._max_score: int | None = None
+        self._score_text: str | None = None  # overrides "SCORE ±x / ±max" when set
+        self._verdict = "—"
+        self._sub = ""
+        self._value = 0.0   # gauge position, 0–100
+        self._color = TOKENS["na"]
+        self.setMinimumHeight(112)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def set_state(
+        self,
+        verdict: str,
+        color: str,
+        score: int | None = None,
+        max_score: int | None = None,
+        value: float | None = None,
+        sub: str = "",
+        score_text: str | None = None,
+    ) -> None:
+        self._verdict = verdict or "—"
+        self._color = color or TOKENS["na"]
+        self._score = score
+        self._max_score = max_score
+        self._value = 50.0 if value is None else max(0.0, min(100.0, float(value)))
+        self._sub = sub
+        self._score_text = score_text
+        self.update()
+
+    def _score_display(self) -> str:
+        if self._score_text:
+            return self._score_text
+        if self._score is None:
+            return ""
+        sign = "+" if self._score > 0 else ("" if self._score < 0 else "±")
+        if self._max_score is not None:
+            max_s = f"+{self._max_score}" if self._max_score >= 0 else str(self._max_score)
+            return f"SCORE {sign}{self._score} / {max_s}"
+        return f"SCORE {sign}{self._score}"
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+
+        # Cell surface (the grid parent paints the 1px border gaps).
+        p.fillRect(self.rect(), QColor(TOKENS["surface"]))
+
+        pad_x = 16
+        pad_y = 14
+
+        # Kicker row
+        p.setFont(ui_font(9, bold=True))
+        p.setPen(QPen(QColor(TOKENS["text_muted"])))
+        p.drawText(QRectF(pad_x, pad_y - 2, w - pad_x * 2, 14),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   self._label)
+        p.setFont(numeric_font(10))
+        p.setPen(QPen(QColor(TOKENS["text_secondary"])))
+        p.drawText(QRectF(pad_x, pad_y - 2, w - pad_x * 2, 14),
+                   Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                   self._score_display())
+
+        # Gauge (64x40 semicircle), left
+        gauge_w, gauge_h = 64, 40
+        gx = pad_x
+        gy = pad_y + 16
+        self._paint_gauge(p, QRectF(gx, gy, gauge_w, gauge_h))
+
+        # Verdict + sub caption, right of gauge
+        tx = gx + gauge_w + 14
+        p.setFont(numeric_font(16, bold=True))
+        p.setPen(QPen(QColor(self._color)))
+        p.drawText(QRectF(tx, gy - 2, w - tx - pad_x, 24),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   self._verdict)
+        p.setFont(ui_font(10))
+        p.setPen(QPen(QColor(TOKENS["text_secondary"])))
+        p.drawText(QRectF(tx, gy + 20, w - tx - pad_x, 16),
+                   Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                   self._sub)
+
+        # Meter bar, full-width at bottom: 4px, centered fill left/right by score sign
+        meter_y = h - pad_y
+        meter_rect = QRectF(pad_x, meter_y, w - pad_x * 2, 4)
+        p.setBrush(QBrush(QColor(TOKENS["surface_alt"])))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(meter_rect, 2, 2)
+
+        # Fill proportional to |score| / max_score; direction from sign.
+        if self._score is not None and self._max_score not in (None, 0):
+            frac = max(-1.0, min(1.0, float(self._score) / float(self._max_score)))
+            center_x = meter_rect.x() + meter_rect.width() / 2
+            half_w = meter_rect.width() / 2
+            fw = abs(frac) * half_w
+            fx = center_x if frac >= 0 else center_x - fw
+            p.setBrush(QBrush(QColor(self._color)))
+            p.drawRoundedRect(QRectF(fx, meter_rect.y(), fw, 4), 2, 2)
+
+    def _paint_gauge(self, p: QPainter, rect: QRectF) -> None:
+        """Draw 180° semicircular gauge in the given rect with a glowing stroke."""
+        # Arc spans a full circle whose diameter == rect.width, clipped to top half.
+        cx = rect.x() + rect.width() / 2
+        cy = rect.y() + rect.height()  # bottom of rect == horizontal diameter
+        r = rect.width() / 2 - 4
+        arc_rect = QRectF(cx - r, cy - r, r * 2, r * 2)
+        stroke_w = 5
+
+        # Background track (180° from left=180° to right=0°)
+        pen = QPen(QColor(TOKENS["border_strong"]), stroke_w)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(pen)
+        p.drawArc(arc_rect, 0 * 16, 180 * 16)
+
+        # Value sweep from left (180°) clockwise to value mapped 0–100.
+        frac = max(0.0, min(1.0, self._value / 100.0))
+        sweep_deg = 180 * frac
+        # Halo
+        halo = QColor(self._color)
+        halo.setAlpha(70)
+        halo_pen = QPen(halo, stroke_w + 4)
+        halo_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(halo_pen)
+        p.drawArc(arc_rect, int(180 * 16), int(-sweep_deg * 16))
+        # Foreground
+        fg_pen = QPen(QColor(self._color), stroke_w)
+        fg_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        p.setPen(fg_pen)
+        p.drawArc(arc_rect, int(180 * 16), int(-sweep_deg * 16))
+
+        # Center value text (mono, inside gauge)
+        p.setFont(numeric_font(11, bold=True))
+        p.setPen(QPen(QColor(TOKENS["text_primary"])))
+        p.drawText(QRectF(rect.x(), cy - 18, rect.width(), 16),
+                   Qt.AlignmentFlag.AlignCenter, f"{int(self._value)}")
+
+
+class RegimeScoreboard(QWidget):
+    """Container for 4 RegimeCells laid out in a 1px-gap grid."""
+
+    _SOURCES = ("equity", "crypto", "macro", "sectors")
+    _LABELS = {
+        "equity":  "EQUITY REGIME",
+        "crypto":  "CRYPTO REGIME",
+        "macro":   "MACRO REGIME",
+        "sectors": "SECTOR ROTATION",
+    }
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setStyleSheet(
+            f"background: {TOKENS['border']}; "
+            f"border: 1px solid {TOKENS['border']}; border-radius: 6px;"
+        )
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(1, 1, 1, 1)
+        lay.setSpacing(1)
+        self._cells: dict[str, RegimeCell] = {}
+        for src in self._SOURCES:
+            cell = RegimeCell(self._LABELS[src])
+            self._cells[src] = cell
+            lay.addWidget(cell, stretch=1)
+
+    def update_source(
+        self,
+        source: str,
+        verdict: str,
+        color: str,
+        score: int | None = None,
+        max_score: int | None = None,
+        value: float | None = None,
+        sub: str = "",
+        score_text: str | None = None,
+    ) -> None:
+        cell = self._cells.get(source)
+        if cell is None:
+            return
+        cell.set_state(verdict=verdict, color=color, score=score,
+                       max_score=max_score, value=value, sub=sub,
+                       score_text=score_text)
+
+
 # ── Sparkline ─────────────────────────────────────────────────────────────────
 
 class Sparkline(QWidget):
@@ -317,58 +514,165 @@ def _isnan(x) -> bool:
 
 # ── MetricCard ────────────────────────────────────────────────────────────────
 
+class _DeltaChip(QLabel):
+    """Small colored background chip for a metric delta (e.g. '+0.8')."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFont(numeric_font(9, bold=True))
+        self.setVisible(False)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setFixedHeight(15)
+        self.setContentsMargins(5, 0, 5, 0)
+
+    def set_delta(self, text: str, color: str | None = None) -> None:
+        if not text:
+            self.setVisible(False)
+            return
+        c = color or TOKENS["text_secondary"]
+        self.setText(text)
+        self.setStyleSheet(
+            f"color: {c}; background-color: {c}28; "
+            f"border: 1px solid {c}55; border-radius: 2px; padding: 0 5px;"
+        )
+        self.setVisible(True)
+
+
+class DriverChip(QLabel):
+    """Mono-labeled chip: 'LABEL VALUE' with a colored border/tint.
+
+    direction: 'up' (risk_on), 'down' (risk_off), 'neutral' (amber/accent),
+    or 'muted' (text_secondary). Compact, inline pill for sleeve drivers.
+    """
+
+    def __init__(self, label: str, value: str = "", direction: str = "muted", parent=None):
+        super().__init__(parent)
+        self.setFont(numeric_font(10, bold=True))
+        self.setFixedHeight(20)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setContentsMargins(8, 0, 8, 0)
+        self.set_chip(label, value, direction)
+
+    def set_chip(self, label: str, value: str = "", direction: str = "muted") -> None:
+        color_map = {
+            "up": TOKENS["up"],
+            "down": TOKENS["down"],
+            "neutral": TOKENS["accent_amber"],
+            "muted": TOKENS["text_secondary"],
+        }
+        c = color_map.get(direction, TOKENS["text_secondary"])
+        text = f"{label.upper()} {value}".strip()
+        self.setText(text)
+        self.setStyleSheet(
+            f"color: {c}; background-color: {c}1A; "
+            f"border: 1px solid {c}55; border-radius: 10px; padding: 0 8px;"
+        )
+
+
 class MetricCard(QWidget):
-    """Tile with label, value (tnum), optional sub, optional sparkline."""
+    """Tile with uppercase label + delta chip, big left-aligned value (tnum),
+    optional sparkline, sub-caption + '30d' footer, and a 3px colored
+    left-inset accent bar driven by the value color (regime tint)."""
 
     def __init__(self, label: str, parent=None):
         super().__init__(parent)
-        self._val_color = TOKENS["text_primary"]
-        self._flash_until_paint = 0
-        self.setMinimumSize(130, 100)
+        self._val_color = TOKENS["text_muted"]
+        self.setMinimumSize(140, 104)
         self.setMaximumHeight(140)
 
-        self._label_lbl = QLabel(label)
-        self._label_lbl.setFont(ui_font(10))
-        self._label_lbl.setStyleSheet(f"color: {TOKENS['text_secondary']};")
-        self._label_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Top row: label + delta chip
+        self._label_lbl = QLabel(label.upper())
+        self._label_lbl.setFont(ui_font(9, bold=True))
+        self._label_lbl.setStyleSheet(
+            f"color: {TOKENS['text_muted']}; letter-spacing: 0.8px; background: transparent;"
+        )
+        self._label_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
+        self._delta_chip = _DeltaChip()
+
+        top_row = QHBoxLayout()
+        top_row.setContentsMargins(0, 0, 0, 0)
+        top_row.setSpacing(6)
+        top_row.addWidget(self._label_lbl, stretch=1)
+        top_row.addWidget(self._delta_chip)
+
+        # Value
         self._value_lbl = QLabel("—")
-        self._value_lbl.setFont(numeric_font(15, bold=True))
-        self._value_lbl.setStyleSheet(f"color: {TOKENS['text_primary']};")
-        self._value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self._sub_lbl = QLabel("")
-        self._sub_lbl.setFont(ui_font(10))
-        self._sub_lbl.setStyleSheet(f"color: {TOKENS['text_secondary']};")
-        self._sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._value_lbl.setFont(numeric_font(16, bold=True))
+        self._value_lbl.setStyleSheet(f"color: {TOKENS['text_primary']}; background: transparent;")
+        self._value_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         self._spark = Sparkline()
+        self._spark.setMinimumHeight(22)
+        self._spark.setMaximumHeight(22)
         self._spark.setVisible(False)
 
+        # Footer: sub (left) + "30d" (right)
+        self._sub_lbl = QLabel("")
+        self._sub_lbl.setFont(ui_font(9))
+        self._sub_lbl.setStyleSheet(
+            f"color: {TOKENS['text_secondary']}; background: transparent;"
+        )
+        self._sub_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        self._range_lbl = QLabel("30d")
+        self._range_lbl.setFont(ui_font(9, bold=True))
+        self._range_lbl.setStyleSheet(
+            f"color: {TOKENS['text_muted']}; letter-spacing: 0.6px; background: transparent;"
+        )
+        self._range_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._range_lbl.setVisible(False)
+
+        bottom_row = QHBoxLayout()
+        bottom_row.setContentsMargins(0, 0, 0, 0)
+        bottom_row.setSpacing(6)
+        bottom_row.addWidget(self._sub_lbl, stretch=1)
+        bottom_row.addWidget(self._range_lbl)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(2)
-        layout.addWidget(self._label_lbl)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(3)
+        layout.addLayout(top_row)
         layout.addWidget(self._value_lbl)
-        layout.addWidget(self._sub_lbl)
         layout.addWidget(self._spark)
+        layout.addLayout(bottom_row)
 
     def set_value(self, value: str, sub: str = "", color: str | None = None) -> None:
         prev = self._value_lbl.text()
         self._val_color = color or TOKENS["text_primary"]
-        self._value_lbl.setStyleSheet(f"color: {self._val_color};")
+        self._value_lbl.setStyleSheet(f"color: {self._val_color}; background: transparent;")
         self._value_lbl.setText(value)
         self._sub_lbl.setText(sub or "")
         self._sub_lbl.setVisible(bool(sub))
         if prev not in ("", "—") and prev != value:
             self._flash(prev, value)
+        self.update()  # repaint left-inset accent
 
-    def set_sparkline(self, data, color: str | None = None) -> None:
+    def set_delta(self, text: str, color: str | None = None) -> None:
+        self._delta_chip.set_delta(text, color)
+
+    def set_sparkline(self, data, color: str | None = None,
+                      delta_fmt: str | None = "{:+.1f}") -> None:
         if data is None or len(data) < 2:
             self._spark.setVisible(False)
+            self._range_lbl.setVisible(False)
             return
-        self._spark.set_data(data, color=color)
+        self._spark.set_data(data, color=color or self._val_color)
         self._spark.setVisible(True)
+        self._range_lbl.setVisible(True)
+        # Auto-derive a delta chip from first → last of the history window,
+        # unless the caller has already set one (check via visibility).
+        if delta_fmt and not self._delta_chip.isVisible():
+            try:
+                vals = [float(x) for x in data if x is not None and not _isnan(x)]
+                if len(vals) >= 2:
+                    delta = vals[-1] - vals[0]
+                    dc = (TOKENS["up"] if delta > 0
+                          else TOKENS["down"] if delta < 0
+                          else TOKENS["text_secondary"])
+                    self._delta_chip.set_delta(delta_fmt.format(delta), dc)
+            except Exception:
+                pass
 
     def _flash(self, prev: str, current: str) -> None:
         try:
@@ -379,7 +683,7 @@ class MetricCard(QWidget):
         flash = TOKENS["up"] if c > p else TOKENS["down"] if c < p else None
         if not flash:
             return
-        base_qss = f"color: {self._val_color};"
+        base_qss = f"color: {self._val_color}; background: transparent;"
         self._value_lbl.setStyleSheet(f"{base_qss} background-color: {flash}33; border-radius: 3px;")
         QTimer.singleShot(220, lambda: self._value_lbl.setStyleSheet(base_qss))
 
@@ -387,9 +691,14 @@ class MetricCard(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
+        # Card surface
         p.setBrush(QBrush(QColor(TOKENS["surface"])))
         p.setPen(QPen(QColor(TOKENS["border"]), 1))
-        p.drawRoundedRect(1, 1, w - 2, h - 2, 6, 6)
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 6, 6)
+        # 3px left-inset accent bar, colored by value color
+        p.setBrush(QBrush(QColor(self._val_color)))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawRoundedRect(QRectF(1, 4, 3, h - 8), 1.5, 1.5)
 
 
 # ── TearOffFrame ──────────────────────────────────────────────────────────────
@@ -534,20 +843,67 @@ class _TearOffButton(QWidget):
             p.drawLine(2, 16, 2, 13)
 
 
+# ── BrandMark ─────────────────────────────────────────────────────────────────
+
+class BrandMark(QWidget):
+    """16x16 rounded square with a three-segment conic gradient
+    (teal/amber/red) — the Risk Monitor brand glyph."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(16, 16)
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(0, 0, 16, 16)
+        # Approximate a 3-segment conic gradient (from 210° clockwise) by
+        # painting three pie slices into a rounded clip.
+        from PyQt6.QtGui import QPainterPath
+        clip = QPainterPath()
+        clip.addRoundedRect(rect, 3, 3)
+        p.setClipPath(clip)
+        # Qt angles: 0° = 3 o'clock, counter-clockwise positive, 16ths of a degree.
+        # Design wants "from 210deg" CSS conic → we emulate with three 120° wedges.
+        segs = [
+            (TOKENS["up"],      210),
+            (TOKENS["neutral"], 330),  # 210 + 120
+            (TOKENS["down"],     90),  # 330 + 120 (mod 360)
+        ]
+        p.setPen(Qt.PenStyle.NoPen)
+        for color, css_angle in segs:
+            # Convert CSS conic angle (0°=up, clockwise) to Qt (0°=right, ccw)
+            qt_start = (90 - css_angle) % 360
+            p.setBrush(QBrush(QColor(color)))
+            p.drawPie(rect, int(qt_start * 16), int(-120 * 16))
+        # Inner inset (simulate 2px inset shadow of surface bg)
+        p.setClipping(False)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        pen = QPen(QColor(TOKENS["surface"]), 2)
+        p.setPen(pen)
+        inset = QRectF(1, 1, 14, 14)
+        path = QPainterPath()
+        path.addRoundedRect(inset, 2, 2)
+        p.drawPath(path)
+
+
 # ── HeaderRegimeBadge ─────────────────────────────────────────────────────────
 
-class HeaderRegimeBadge(QLabel):
-    """Color-coded pill aggregating the worst (most-severe) regime."""
+class HeaderRegimeBadge(QWidget):
+    """Pill-style aggregate badge: AGGREGATE label + glowing dot + verdict
+    + mono count summary (e.g. 3↑ 2→ 2↓). Tracks per-source regimes and
+    surfaces the worst."""
 
     _SEVERITY = {"RISK-OFF": 2, "NEUTRAL": 1, "RISK-ON": 0, "—": -1}
 
     def __init__(self, parent=None):
-        super().__init__("REGIME  —", parent)
-        self.setFont(ui_font(10, bold=True))
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumWidth(140)
+        super().__init__(parent)
         self._regimes: dict[str, dict] = {}
-        self._restyle("—", TOKENS["na"])
+        self._color = TOKENS["na"]
+        self._verdict = "—"
+        self._counts = (0, 0, 0)  # up, neutral, down
+        self.setFixedHeight(22)
+        self.setMinimumWidth(180)
 
     def update_regime(self, source: str, regime: str, color: str) -> None:
         self._regimes[source] = {"regime": regime, "color": color}
@@ -555,16 +911,73 @@ class HeaderRegimeBadge(QLabel):
             self._regimes.items(),
             key=lambda kv: self._SEVERITY.get(kv[1]["regime"], -1),
         )
-        self._restyle(worst_data["regime"], worst_data["color"])
+        self._verdict = "MIXED" if self._is_mixed() else worst_data["regime"]
+        self._color = worst_data["color"] if self._verdict != "MIXED" else TOKENS["neutral"]
+        up = sum(1 for d in self._regimes.values() if d["regime"] == "RISK-ON")
+        nu = sum(1 for d in self._regimes.values() if d["regime"] == "NEUTRAL")
+        dn = sum(1 for d in self._regimes.values() if d["regime"] == "RISK-OFF")
+        self._counts = (up, nu, dn)
         breakdown = "  ·  ".join(f"{s.upper()}: {d['regime']}" for s, d in self._regimes.items())
         self.setToolTip(breakdown)
+        self.update()
 
-    def _restyle(self, regime: str, color: str) -> None:
-        self.setText(f"●  {regime}")
-        self.setStyleSheet(
-            f"color: {color}; background: {color}22; "
-            f"border: 1px solid {color}; border-radius: 11px; padding: 2px 12px;"
-        )
+    def _is_mixed(self) -> bool:
+        regs = {d["regime"] for d in self._regimes.values()}
+        return len(regs) >= 2 and "RISK-ON" in regs and "RISK-OFF" in regs
+
+    def sizeHint(self):
+        from PyQt6.QtCore import QSize
+        return QSize(220, 22)
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        # Pill background
+        p.setBrush(QBrush(QColor(TOKENS["surface_alt"])))
+        p.setPen(QPen(QColor(TOKENS["border_strong"]), 1))
+        p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), h / 2, h / 2)
+
+        x = 10
+        # AGGREGATE label
+        p.setPen(QPen(QColor(TOKENS["text_secondary"])))
+        p.setFont(ui_font(9, bold=True))
+        label = "AGGREGATE"
+        fm = p.fontMetrics()
+        lw = fm.horizontalAdvance(label)
+        p.drawText(QRectF(x, 0, lw, h), Qt.AlignmentFlag.AlignVCenter, label)
+        x += lw + 8
+
+        # Glowing dot
+        dot_r = 4
+        dot_cy = h / 2
+        # Halo
+        halo = QColor(self._color)
+        halo.setAlpha(80)
+        p.setBrush(QBrush(halo))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(QPointF(x + dot_r, dot_cy), dot_r + 3, dot_r + 3)
+        # Dot
+        p.setBrush(QBrush(QColor(self._color)))
+        p.drawEllipse(QPointF(x + dot_r, dot_cy), dot_r, dot_r)
+        x += dot_r * 2 + 8
+
+        # Verdict
+        p.setPen(QPen(QColor(TOKENS["text_primary"])))
+        p.setFont(ui_font(10, bold=True))
+        fm = p.fontMetrics()
+        vw = fm.horizontalAdvance(self._verdict)
+        p.drawText(QRectF(x, 0, vw, h), Qt.AlignmentFlag.AlignVCenter, self._verdict)
+        x += vw + 8
+
+        # Mono counts "3↑ 2→ 2↓"
+        up, nu, dn = self._counts
+        counts = f"{up}↑ {nu}→ {dn}↓"
+        p.setPen(QPen(QColor(TOKENS["text_muted"])))
+        p.setFont(numeric_font(9))
+        fm = p.fontMetrics()
+        cw = fm.horizontalAdvance(counts)
+        p.drawText(QRectF(x, 0, cw, h), Qt.AlignmentFlag.AlignVCenter, counts)
 
 
 # ── LatencyDot ────────────────────────────────────────────────────────────────
@@ -623,6 +1036,80 @@ class LatencyDot(QWidget):
         p.setBrush(QBrush(QColor(self._color())))
         p.setPen(Qt.PenStyle.NoPen)
         p.drawEllipse(0, 0, 10, 10)
+
+
+# ── LatencyChip ───────────────────────────────────────────────────────────────
+
+class LatencyChip(QWidget):
+    """Compact chip: glowing dot + uppercase source label + seconds-since-fetch.
+    Drops into the header latency group. Replaces the bare LatencyDot in the
+    redesigned header while preserving the same mark()/tick() interface."""
+
+    _LABELS = {"equity": "EQ", "crypto": "CR", "macro": "MC", "sectors": "SEC"}
+
+    def __init__(self, source: str, warn_sec: int = 120, stale_sec: int = 600, parent=None):
+        super().__init__(parent)
+        self._source = source
+        self._warn = warn_sec
+        self._stale = stale_sec
+        self._last: datetime | None = None
+        self.setFixedHeight(22)
+        self.setMinimumWidth(58)
+
+    def mark(self, when: datetime | None = None) -> None:
+        self._last = when or datetime.now()
+        self.update()
+
+    def tick(self) -> None:
+        self.update()
+
+    def _age(self) -> float | None:
+        if self._last is None:
+            return None
+        return (datetime.now() - self._last).total_seconds()
+
+    def _color(self) -> str:
+        age = self._age()
+        if age is None:
+            return TOKENS["na"]
+        if age < self._warn:
+            return TOKENS["latency_ok"]
+        if age < self._stale:
+            return TOKENS["latency_warn"]
+        return TOKENS["latency_stale"]
+
+    def _age_text(self) -> str:
+        age = self._age()
+        if age is None:
+            return "—"
+        if age < 60:
+            return f"{age:.1f}s" if age < 10 else f"{int(age)}s"
+        if age < 3600:
+            return f"{int(age / 60)}m"
+        return f"{age / 3600:.1f}h"
+
+    def paintEvent(self, _ev):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        cy = h / 2
+        color = self._color()
+
+        # Glowing dot
+        halo = QColor(color)
+        halo.setAlpha(90)
+        p.setBrush(QBrush(halo))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.drawEllipse(QPointF(5, cy), 5, 5)
+        p.setBrush(QBrush(QColor(color)))
+        p.drawEllipse(QPointF(5, cy), 3, 3)
+
+        # Label + seconds
+        label = self._LABELS.get(self._source, self._source.upper())
+        text = f"{label} {self._age_text()}"
+        p.setPen(QPen(QColor(TOKENS["text_muted"])))
+        p.setFont(ui_font(9, bold=True))
+        p.drawText(QRectF(13, 0, w - 13, h), Qt.AlignmentFlag.AlignVCenter, text)
 
 
 # ── FlashLabel ────────────────────────────────────────────────────────────────
@@ -1003,3 +1490,148 @@ class CorrelationHeatmap(QWidget):
                     p.setFont(numeric_font(9))
                     p.drawText(QRectF(x, y, cell_w, cell_h),
                                Qt.AlignmentFlag.AlignCenter, f"{v:+.2f}")
+
+
+class ToastNotification(QWidget):
+    """Dismissible notification with a colored left border, title, body.
+
+    tone: 'up' / 'down' / 'neutral' / 'violet' — controls border + tint.
+    """
+
+    dismissed = None  # type: ignore[assignment]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._tone_color = TOKENS["down"]
+        self.setVisible(False)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 10, 8, 10)
+        lay.setSpacing(10)
+
+        text_col = QVBoxLayout()
+        text_col.setContentsMargins(0, 0, 0, 0)
+        text_col.setSpacing(2)
+
+        self._title = QLabel("")
+        self._title.setFont(ui_font(10, bold=True))
+        self._title.setStyleSheet(f"color: {TOKENS['text_primary']}; letter-spacing: 0.5px; background: transparent;")
+        self._body = QLabel("")
+        self._body.setFont(ui_font(10))
+        self._body.setWordWrap(True)
+        self._body.setStyleSheet(f"color: {TOKENS['text_secondary']}; background: transparent;")
+        text_col.addWidget(self._title)
+        text_col.addWidget(self._body)
+        lay.addLayout(text_col, stretch=1)
+
+        self._btn = QLabel("✕")
+        self._btn.setFixedSize(18, 18)
+        self._btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._btn.setStyleSheet(
+            f"color: {TOKENS['text_muted']}; background: transparent; "
+            f"border: none; font-size: 12px;"
+        )
+        self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn.mousePressEvent = lambda e: self.dismiss()  # type: ignore[assignment]
+        lay.addWidget(self._btn, alignment=Qt.AlignmentFlag.AlignTop)
+
+        self._apply_tone()
+
+    def _apply_tone(self):
+        c = self._tone_color
+        self.setStyleSheet(
+            f"QWidget {{ background-color: {c}14; "
+            f"border: 1px solid {c}55; border-left: 3px solid {c}; "
+            f"border-radius: 4px; }}"
+        )
+
+    def show_toast(self, title: str, body: str, tone: str = "down"):
+        tone_map = {
+            "up": TOKENS["up"],
+            "down": TOKENS["down"],
+            "neutral": TOKENS["neutral"],
+            "violet": TOKENS.get("accent_violet", TOKENS["accent_blue"]),
+        }
+        self._tone_color = tone_map.get(tone, TOKENS["down"])
+        self._apply_tone()
+        self._title.setText(title)
+        self._body.setText(body)
+        self.setVisible(True)
+
+    def dismiss(self):
+        self.setVisible(False)
+
+
+class SignalLog(QWidget):
+    """Rolling timestamped log of regime flips and notable events.
+
+    Displays up to ``max_entries`` rows, newest on top. Each entry has
+    a colored dot (tone) + HH:MM:SS timestamp + message.
+    """
+
+    def __init__(self, max_entries: int = 20, parent=None):
+        super().__init__(parent)
+        self._max = max_entries
+        self.setStyleSheet(
+            f"background: {TOKENS['surface']}; border: 1px solid {TOKENS['border']}; "
+            f"border-radius: 6px;"
+        )
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(10, 8, 10, 10)
+        outer.setSpacing(6)
+
+        hdr = QLabel("SIGNAL LOG")
+        hdr.setFont(ui_font(9, bold=True))
+        hdr.setStyleSheet(
+            f"color: {TOKENS['text_muted']}; letter-spacing: 0.8px; "
+            f"background: transparent; border: none;"
+        )
+        outer.addWidget(hdr)
+
+        self._rows = QVBoxLayout()
+        self._rows.setContentsMargins(0, 0, 0, 0)
+        self._rows.setSpacing(4)
+        outer.addLayout(self._rows)
+        outer.addStretch()
+
+    def add_entry(self, message: str, tone: str = "neutral"):
+        tone_map = {
+            "up": TOKENS["up"],
+            "down": TOKENS["down"],
+            "neutral": TOKENS["neutral"],
+            "muted": TOKENS["text_muted"],
+        }
+        c = tone_map.get(tone, TOKENS["text_muted"])
+        ts = datetime.now().strftime("%H:%M:%S")
+
+        row = QWidget()
+        row.setStyleSheet("background: transparent; border: none;")
+        h = QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(8)
+
+        dot = QLabel("●")
+        dot.setStyleSheet(f"color: {c}; background: transparent; font-size: 11px;")
+        dot.setFixedWidth(10)
+
+        ts_lbl = QLabel(ts)
+        ts_lbl.setFont(numeric_font(9))
+        ts_lbl.setStyleSheet(f"color: {TOKENS['text_muted']}; background: transparent;")
+        ts_lbl.setFixedWidth(58)
+
+        msg_lbl = QLabel(message)
+        msg_lbl.setFont(ui_font(10))
+        msg_lbl.setStyleSheet(f"color: {TOKENS['text_primary']}; background: transparent;")
+        msg_lbl.setWordWrap(True)
+
+        h.addWidget(dot)
+        h.addWidget(ts_lbl)
+        h.addWidget(msg_lbl, stretch=1)
+
+        self._rows.insertWidget(0, row)
+
+        while self._rows.count() > self._max:
+            item = self._rows.takeAt(self._rows.count() - 1)
+            if item and item.widget():
+                item.widget().deleteLater()

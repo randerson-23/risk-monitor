@@ -42,6 +42,7 @@ TOKENS: dict[str, str] = {
     # Accents
     "accent_amber":   "#FFA028",
     "accent_blue":    "#3B82F6",
+    "accent_violet":  "#BC8CFF",
 
     # Latency
     "latency_ok":     "#26A69A",
@@ -66,6 +67,7 @@ COLORS: dict[str, str] = {
     "neutral":        TOKENS["neutral"],
     "risk_off":       TOKENS["down"],
     "accent":         TOKENS["accent_blue"],
+    "violet":         TOKENS["accent_violet"],
     "na":             TOKENS["na"],
 }
 

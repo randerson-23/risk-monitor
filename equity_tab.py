@@ -230,6 +230,20 @@ class EquityTab(QWidget):
             self.lbl_pc.setText(f"Put/Call: {pc:.3f}")
 
     def _update_cards(self, d: dict) -> None:
+        def _set_30d_delta(card, hist, fmt="{:+.1f}") -> None:
+            """Compute last-vs-30d-ago delta and paint the chip."""
+            if hist is None:
+                return
+            try:
+                vals = list(hist.tail(30).values)
+                if len(vals) < 2:
+                    return
+                delta = float(vals[-1]) - float(vals[0])
+                color = COLORS["risk_on"] if delta > 0 else COLORS["risk_off"] if delta < 0 else COLORS["neutral"]
+                card.set_delta(fmt.format(delta), color)
+            except Exception:
+                pass
+
         vix = d.get("vix")
         if vix is not None:
             prev = d.get("vix_prev", vix)
@@ -238,6 +252,10 @@ class EquityTab(QWidget):
                                     f"prev {prev:.1f}", _vix_color(vix))
             if d.get("vix_hist") is not None:
                 self.card_vix.set_sparkline(list(d["vix_hist"].tail(60).values))
+            d_vix = vix - prev
+            if d_vix != 0:
+                dc = COLORS["risk_off"] if d_vix > 0 else COLORS["risk_on"]
+                self.card_vix.set_delta(f"{d_vix:+.1f}", dc)
 
         skew = d.get("skew")
         if skew is not None:
@@ -245,6 +263,7 @@ class EquityTab(QWidget):
             self.card_skew.set_value(f"{skew:.1f}", "tail risk", c)
             if d.get("skew_hist") is not None:
                 self.card_skew.set_sparkline(list(d["skew_hist"].tail(60).values))
+                _set_30d_delta(self.card_skew, d["skew_hist"])
 
         pc = d.get("put_call_ratio")
         if pc is not None:
@@ -255,6 +274,7 @@ class EquityTab(QWidget):
             self.card_breadth.set_value(f"{b:.1f}%", "above 200MA", _breadth_color(b))
             if d.get("breadth_hist") is not None:
                 self.card_breadth.set_sparkline(list(d["breadth_hist"].tail(60).values))
+                _set_30d_delta(self.card_breadth, d["breadth_hist"], fmt="{:+.0f}pp")
 
         spx = d.get("spx")
         if spx is not None:
@@ -263,6 +283,13 @@ class EquityTab(QWidget):
             self.card_spx.set_value(f"{spx:,.0f}", f"ma200 {ma:,.0f}", c)
             if d.get("spx_hist") is not None:
                 self.card_spx.set_sparkline(list(d["spx_hist"].tail(60).values))
+                try:
+                    hist = d["spx_hist"].tail(30)
+                    pct = (float(hist.iloc[-1]) / float(hist.iloc[0]) - 1.0) * 100
+                    dc = COLORS["risk_on"] if pct > 0 else COLORS["risk_off"] if pct < 0 else COLORS["neutral"]
+                    self.card_spx.set_delta(f"{pct:+.1f}%", dc)
+                except Exception:
+                    pass
 
         fg = d.get("cnn_fear_greed")
         if fg is not None:
@@ -270,6 +297,7 @@ class EquityTab(QWidget):
                                     d.get("cnn_fear_greed_rating", ""), _fg_color(fg))
             if d.get("cnn_fg_hist") is not None:
                 self.card_cnn.set_sparkline(list(d["cnn_fg_hist"].tail(60).values))
+                _set_30d_delta(self.card_cnn, d["cnn_fg_hist"], fmt="{:+.0f}")
 
     def _store_chart_series(self, d: dict) -> None:
         self._chart_series = {

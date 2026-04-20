@@ -7,7 +7,8 @@ from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QProgressBar,
 from regime import (NEUTRAL, REGIME_COLORS, RISK_OFF, RISK_ON,
                     compute_crypto_regime, compute_equity_regime,
                     compute_macro_regime)
-from widgets import COLORS, CycleClockWidget, fs
+from widgets import (COLORS, CycleClockWidget, DriverChip, RegimeScoreboard,
+                     SignalLog, ToastNotification, fs)
 
 # ── Continuous allocation functions ──────────────────────────────────────────
 
@@ -352,7 +353,16 @@ class PortfolioTab(QWidget):
         lay.setSpacing(10)
         lay.setContentsMargins(12, 12, 12, 12)
 
+        self.toast = ToastNotification()
+        lay.addWidget(self.toast)
+
+        self.scoreboard = RegimeScoreboard()
+        lay.addWidget(self.scoreboard)
+
         lay.addWidget(self._build_header())
+
+        self.signal_log = SignalLog(max_entries=10)
+        lay.addWidget(self.signal_log)
 
         # Row 1: Betterment + Cash Yield
         row1 = QHBoxLayout(); row1.setSpacing(10)
@@ -412,6 +422,31 @@ class PortfolioTab(QWidget):
         )
         return l
 
+    def _chip_strip(self):
+        """Horizontal container for a row of DriverChips. Returns (widget, layout)."""
+        w = QWidget()
+        w.setStyleSheet("background: transparent; border: none;")
+        h = QHBoxLayout(w)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
+        h.addStretch()
+        return w, h
+
+    def _set_chips(self, layout, chips):
+        """Replace all chips in ``layout`` with the given list of
+        (label, value, direction) tuples."""
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            if item is None:
+                break
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
+        for label, value, direction in chips:
+            layout.addWidget(DriverChip(label, value, direction))
+        layout.addStretch()
+
     def _signal_lbl(self):
         l = QLabel("")
         l.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
@@ -463,6 +498,9 @@ class PortfolioTab(QWidget):
         sub = QLabel("Single allocation number  ·  equity + macro + rates + credit + vol")
         sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(hdr); lay.addWidget(sub)
+
+        strip, self._bet_chips_lay = self._chip_strip()
+        lay.addWidget(strip)
 
         drivers = QHBoxLayout()
         self.lbl_bet_eq = QLabel("EQUITY: —")
@@ -524,6 +562,9 @@ class PortfolioTab(QWidget):
         self.lbl_btc_regime = QLabel("CRYPTO: —")
         self.lbl_btc_regime.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         lay.addWidget(self.lbl_btc_regime)
+
+        strip, self._btc_chips_lay = self._chip_strip()
+        lay.addWidget(strip)
 
         lay.addWidget(self._divider())
         lay.addWidget(self._section_lbl("DEPLOYED"))
@@ -601,6 +642,9 @@ class PortfolioTab(QWidget):
         sub = QLabel("Income strategy  ·  size by VIX percentile  ·  idle cash in treasuries")
         sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
         lay.addWidget(hdr); lay.addWidget(sub)
+
+        strip, self._spx_chips_lay = self._chip_strip()
+        lay.addWidget(strip)
 
         lay.addWidget(self._divider())
         lay.addWidget(self._section_lbl("DIRECTIONAL LEAN"))
@@ -794,6 +838,23 @@ class PortfolioTab(QWidget):
         for i, lbl in enumerate(self._bet_driver_lbls):
             lbl.setText(f"• {driver_notes[i]}" if i < len(driver_notes) else "")
 
+        chips = []
+        eq_dir = "up" if eq_score > 0 else ("down" if eq_score < 0 else "neutral")
+        chips.append(("EQ REGIME", f"{eq_score:+d}", eq_dir))
+        mc_dir = "up" if mc_score > 0 else ("down" if mc_score < 0 else "neutral")
+        chips.append(("MACRO", f"{mc_score:+d}", mc_dir))
+        if move is not None:
+            mv_dir = "down" if move > 130 else ("up" if move < 80 else "neutral")
+            chips.append(("MOVE", f"{move:.0f}", mv_dir))
+        if vix_pctile is not None:
+            vp_dir = "down" if vix_pctile >= 70 else ("up" if vix_pctile < 30 else "neutral")
+            chips.append(("VIX PCT", f"{vix_pctile:.0f}", vp_dir))
+        if hy_spread is not None:
+            hy_dir = "down" if hy_spread > 5 else ("up" if hy_spread < 3 else "neutral")
+            chips.append(("HY", f"{hy_spread:.1f}%", hy_dir))
+        chips.append(("TARGET", f"{eq_pct:.0f}/{bond_pct:.0f}", "muted"))
+        self._set_chips(self._bet_chips_lay, chips)
+
         if move is not None:
             mc_color = COLORS["risk_off"] if move > 130 else (COLORS["risk_on"] if move < 80 else COLORS["text_primary"])
             self.lbl_move_ctx.setText(f"MOVE: {move:.0f}")
@@ -827,6 +888,18 @@ class PortfolioTab(QWidget):
         sigs = _key_signals(cr.get("factors", []), 4)
         for i, lbl in enumerate(self._btc_sigs):
             lbl.setText(f"• {sigs[i]}" if i < len(sigs) else "")
+
+        cr_score = cr.get("score", 0)
+        cr_dir = "up" if cr_score > 0 else ("down" if cr_score < 0 else "neutral")
+        chips = [
+            ("CRYPTO", f"{cr_score:+d}", cr_dir),
+            ("EXPOSURE", f"{exposure}%", "up" if exposure >= 60 else ("down" if exposure < 30 else "neutral")),
+            ("CYCLE", cyc_action.split()[0] if cyc_action else "—", "muted"),
+        ]
+        btc_rv30 = self._crypto_data.get("btc_rv30")
+        if btc_rv30 is not None:
+            chips.append(("RV30", f"{btc_rv30:.0f}%", "muted"))
+        self._set_chips(self._btc_chips_lay, chips)
 
     # ── IBIT Premium ──────────────────────────────────────────────────────────
 
@@ -910,6 +983,21 @@ class PortfolioTab(QWidget):
         for tenor, text, color in recs:
             lbl = self._strat_lbls[tenor]; lbl.setText(text)
             lbl.setStyleSheet(f"color: {color}; font-size: {fs(14)}px; border: none;")
+
+        chips = []
+        if vix is not None:
+            vx_dir = "down" if vix >= 25 else ("up" if vix < 15 else "neutral")
+            chips.append(("VIX", f"{vix:.1f}", vx_dir))
+        if vix_pctile is not None:
+            vp_dir = "up" if vix_pctile >= 60 else ("down" if vix_pctile < 30 else "neutral")
+            chips.append(("PCT", f"{vix_pctile:.0f}", vp_dir))
+        if ivr is not None:
+            chips.append(("IVR", f"{ivr:.0f}%", "muted"))
+        sz_dir = "up" if sizing >= 0.75 else ("down" if sizing < 0.4 else "neutral")
+        chips.append(("SIZE", f"{sizing:.2f}×", sz_dir))
+        lean_dir = "up" if "naked" in lean_text.lower() or "put" in lean_text.lower() else "neutral"
+        chips.append(("LEAN", lean_text.split()[0].upper() if lean_text else "—", lean_dir))
+        self._set_chips(self._spx_chips_lay, chips)
 
     # ── Cash Yield ────────────────────────────────────────────────────────────
 

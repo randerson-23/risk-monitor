@@ -3,7 +3,7 @@ import os
 from PyQt6.QtCore import Qt, QSize, QSettings, QTimer
 from PyQt6.QtGui import QBrush, QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QShortcut
 from PyQt6.QtWidgets import (QApplication, QDialog, QDialogButtonBox,
-                              QHBoxLayout, QLabel, QMainWindow, QPushButton,
+                              QFrame, QHBoxLayout, QLabel, QMainWindow, QPushButton,
                               QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
 from ai_panel import AIPanel
@@ -16,7 +16,10 @@ from notifications import NotificationManager, ToastWidget
 from portfolio_tab import PortfolioTab
 from sectors_tab import SectorsTab
 from sentiment_tab import SentimentTab
-from widgets import COLORS, HeaderRegimeBadge, LatencyDot, apply_font_delta_offset, fs, set_font_delta
+from theme import TOKENS
+from widgets import (BrandMark, COLORS, HeaderRegimeBadge, LatencyChip,
+                     SignalLog, ToastNotification,
+                     apply_font_delta_offset, fs, set_font_delta)
 from workers import (CryptoWorker, EquityWorker, ForecastWorker, MacroForwardWorker,
                        MacroWorker, SectorWorker, SentimentWorker)
 
@@ -106,6 +109,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1060, 780)
         self._pending = set()
         self._sector_data: dict = {}
+        self._prev_regimes: dict[str, str] = {}
         self._settings = QSettings("RiskMonitor", "Dashboard")
         self._font_size = int(self._settings.value("ui/font_size", _DEFAULT_FONT))
         # Sync the global font delta so every stylesheet built via fs()
@@ -141,29 +145,36 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         self.setStyleSheet(f"""
-            QMainWindow   {{ background: {COLORS['bg']}; }}
+            QMainWindow {{ background: {TOKENS['bg']}; }}
             QTabWidget::pane {{
-                border: 1px solid {COLORS['card_border']};
-                background: {COLORS['bg']};
+                border: none;
+                border-top: 1px solid {TOKENS['border']};
+                background: {TOKENS['bg']};
+                top: 0;
+            }}
+            QTabWidget::tab-bar {{ left: 12px; }}
+            QTabBar {{
+                background: {TOKENS['surface']};
+                qproperty-drawBase: 0;
+                border-bottom: 1px solid {TOKENS['border']};
             }}
             QTabBar::tab {{
-                background: {COLORS['card_bg']};
-                color: {COLORS['text_secondary']};
-                padding: 8px 22px;
-                border: 1px solid {COLORS['card_border']};
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                font-size: {fs(14)}px;
+                background: transparent;
+                color: {TOKENS['text_secondary']};
+                padding: 0 14px;
+                height: 28px;
+                border: none;
+                border-bottom: 2px solid transparent;
+                margin: 0;
+                font-size: {fs(12)}px;
+                letter-spacing: 0.5px;
             }}
             QTabBar::tab:selected {{
-                background: {COLORS['bg']};
-                color: {COLORS['text_primary']};
-                border-bottom-color: {COLORS['bg']};
+                color: {TOKENS['text_primary']};
+                border-bottom: 2px solid {TOKENS['accent_amber']};
             }}
             QTabBar::tab:hover:!selected {{
-                background: #1c2128;
-                color: {COLORS['text_primary']};
+                color: {TOKENS['text_primary']};
             }}
         """)
 
@@ -201,7 +212,28 @@ class MainWindow(QMainWindow):
         self.claude_tab = ClaudeTab()
         self.claude_tab.followup_requested.connect(self._on_followup_request)
         self.tabs.addTab(self.claude_tab,    "Claude")
-        self.tabs.setIconSize(QSize(14, 14))
+        # Violet dot for the Claude tab (matches design spec)
+        self.tabs.setTabIcon(self.tabs.indexOf(self.claude_tab),
+                             self._regime_dot_icon("#BC8CFF"))
+        # Portfolio is the default/"hero" tab per the design
+        self.tabs.setCurrentWidget(self.portfolio_tab)
+        self.tabs.setIconSize(QSize(10, 10))
+
+        # Right-side sublabels on the tab bar
+        corner = QWidget()
+        corner_lay = QHBoxLayout(corner)
+        corner_lay.setContentsMargins(8, 0, 14, 0)
+        corner_lay.setSpacing(18)
+        self.lbl_sub_refresh = QLabel("AUTO-REFRESH · 5M")
+        self.lbl_sub_session = QLabel("SESSION · — ET")
+        for lbl in (self.lbl_sub_refresh, self.lbl_sub_session):
+            lbl.setStyleSheet(
+                f"color: {TOKENS['text_muted']}; font-size: {fs(10)}px; "
+                f"letter-spacing: 0.8px; background: transparent;"
+            )
+            corner_lay.addWidget(lbl)
+        self.tabs.setCornerWidget(corner, Qt.Corner.TopRightCorner)
+
         content_row.addWidget(self.tabs, stretch=1)
 
         # AI slide-out panel (starts hidden at width 0)
@@ -210,111 +242,222 @@ class MainWindow(QMainWindow):
 
         root.addLayout(content_row)
 
+        # Status bar (terminal-style, 22px)
+        root.addWidget(self._build_status_bar())
+
+    def _build_status_bar(self) -> QWidget:
+        bar = QWidget()
+        bar.setFixedHeight(22)
+        bar.setStyleSheet(
+            f"background: {TOKENS['surface']}; "
+            f"border-top: 1px solid {TOKENS['border']};"
+        )
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(12, 0, 12, 0)
+        lay.setSpacing(16)
+
+        def _mono(text: str, color: str | None = None):
+            lbl = QLabel(text)
+            c = color or TOKENS["text_muted"]
+            lbl.setStyleSheet(
+                f"color: {c}; font-family: 'JetBrains Mono','Consolas',monospace; "
+                f"font-size: {fs(10)}px; letter-spacing: 0.3px; background: transparent; border: none;"
+            )
+            return lbl
+
+        self.lbl_status_conn = _mono("● CONNECTED", TOKENS["up"])
+        self.lbl_status_eq = _mono("EQ —ms")
+        self.lbl_status_cr = _mono("CR —ms")
+        self.lbl_status_mc = _mono("MC —ms")
+        self.lbl_status_sec = _mono("SEC —ms")
+        from datetime import datetime as _dt
+        self.lbl_status_build = _mono(f"BUILD {_dt.now().strftime('%Y.%m.%d')}")
+
+        lay.addWidget(self.lbl_status_conn)
+        lay.addWidget(self.lbl_status_eq)
+        lay.addWidget(self.lbl_status_cr)
+        lay.addWidget(self.lbl_status_mc)
+        lay.addWidget(self.lbl_status_sec)
+        lay.addStretch()
+        lay.addWidget(self.lbl_status_build)
+        return bar
+
     def _build_header(self) -> QWidget:
         bar = QWidget()
         bar.setFixedHeight(46)
         bar.setStyleSheet(
-            f"background: {COLORS['card_bg']}; border-bottom: 1px solid {COLORS['card_border']};"
+            f"background: {TOKENS['surface']}; "
+            f"border-bottom: 1px solid {TOKENS['border']};"
         )
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(16, 0, 16, 0)
+        lay.setSpacing(12)
 
+        # Brand mark + wordmark
+        lay.addWidget(BrandMark())
         title = QLabel("RISK MONITOR")
         title.setStyleSheet(
-            f"color: {COLORS['text_primary']}; font-size: {fs(15)}px; font-weight: bold; letter-spacing: 2px;"
+            f"color: {TOKENS['text_primary']}; font-size: {fs(13)}px; "
+            f"font-weight: 700; letter-spacing: 2px; background: transparent;"
         )
         lay.addWidget(title)
 
-        # Aggregate regime badge (right of title)
+        # Aggregate regime badge
         self.regime_badge = HeaderRegimeBadge()
-        lay.addSpacing(12)
         lay.addWidget(self.regime_badge)
 
         lay.addStretch()
 
-        # Latency dots — one per data source
-        self._latency_dots: dict[str, LatencyDot] = {}
+        # Latency group — left/right bordered cluster
+        lat_wrap = QWidget()
+        lat_wrap.setFixedHeight(22)
+        lat_wrap.setStyleSheet(
+            f"background: transparent; "
+            f"border-left: 1px solid {TOKENS['border']}; "
+            f"border-right: 1px solid {TOKENS['border']};"
+        )
+        lat_lay = QHBoxLayout(lat_wrap)
+        lat_lay.setContentsMargins(8, 0, 8, 0)
+        lat_lay.setSpacing(10)
+        self._latency_dots: dict[str, LatencyChip] = {}
         for src in ("equity", "crypto", "macro", "sectors"):
-            dot = LatencyDot(src)
-            self._latency_dots[src] = dot
-            lay.addWidget(dot)
-            lay.addSpacing(6)
+            chip = LatencyChip(src)
+            self._latency_dots[src] = chip
+            lat_lay.addWidget(chip)
+        lay.addWidget(lat_wrap)
 
-        self.lbl_updated = QLabel("Not yet loaded")
-        self.lbl_updated.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(15)}px;")
+        # Updated / next-refresh label (mono)
+        self.lbl_updated = QLabel("Updated —  ·  next —")
+        self.lbl_updated.setStyleSheet(
+            f"color: {TOKENS['text_secondary']}; font-size: {fs(11)}px; "
+            f"letter-spacing: 0.4px; background: transparent;"
+        )
         lay.addWidget(self.lbl_updated)
 
-        # Ask Claude button
-        self.btn_claude = QPushButton("🤖  Ask Claude")
-        self.btn_claude.setFixedSize(112, 26)
+        # Ask Claude button (violet, glowing dot prefix)
+        self.btn_claude = QPushButton("  Ask Claude")
+        self.btn_claude.setFixedHeight(26)
+        self.btn_claude.setMinimumWidth(118)
+        violet = "#BC8CFF"
         self.btn_claude.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: #bc8cff;
-                border: 1px solid #bc8cff;
+                color: {violet};
+                border: 1px solid {violet};
                 border-radius: 4px;
-                font-size: {fs(14)}px;
+                font-size: {fs(11)}px;
+                letter-spacing: 0.3px;
+                padding: 0 12px;
+                text-align: center;
             }}
-            QPushButton:hover   {{ background: #bc8cff; color: {COLORS['bg']}; }}
-            QPushButton:disabled {{ color: {COLORS['text_secondary']};
-                                    border-color: {COLORS['card_border']}; }}
+            QPushButton:hover    {{ background: {violet}; color: {TOKENS['bg']}; }}
+            QPushButton:disabled {{ color: {TOKENS['text_secondary']};
+                                     border-color: {TOKENS['border']}; }}
         """)
         self.btn_claude.clicked.connect(self._ask_claude)
         lay.addWidget(self.btn_claude)
 
-        # Font size controls (A−  A  A+)
-        font_btn_style = f"""
+        # Font size control — unified segmented pill (− size +)
+        ghost_btn_style = f"""
             QPushButton {{
                 background: transparent;
-                color: {COLORS['text_secondary']};
-                border: 1px solid {COLORS['card_border']};
+                color: {TOKENS['text_secondary']};
+                border: 1px solid {TOKENS['border']};
                 border-radius: 4px;
-                font-size: {fs(13)}px;
-                font-weight: bold;
+                font-size: {fs(11)}px;
+                font-weight: 600;
             }}
             QPushButton:hover {{
-                color: {COLORS['text_primary']};
-                border-color: {COLORS['text_primary']};
+                color: {TOKENS['text_primary']};
+                border-color: {TOKENS['border_strong']};
             }}
         """
-        self.btn_font_dec = QPushButton("A−")
-        self.btn_font_dec.setFixedSize(28, 26)
+        font_group = QWidget()
+        font_group.setFixedHeight(26)
+        fg_lay = QHBoxLayout(font_group)
+        fg_lay.setContentsMargins(0, 0, 0, 0)
+        fg_lay.setSpacing(0)
+
+        seg_left = f"""
+            QPushButton {{
+                background: {TOKENS['surface']}; color: {TOKENS['text_secondary']};
+                border: 1px solid {TOKENS['border']};
+                border-top-left-radius: 13px; border-bottom-left-radius: 13px;
+                border-top-right-radius: 0; border-bottom-right-radius: 0;
+                border-right: none;
+                font-size: 14px; font-weight: 600; padding: 0;
+            }}
+            QPushButton:hover {{ color: {TOKENS['text_primary']}; background: {TOKENS['surface_alt']}; }}
+        """
+        seg_mid = f"""
+            QPushButton {{
+                background: {TOKENS['surface']}; color: {TOKENS['text_primary']};
+                border-top: 1px solid {TOKENS['border']};
+                border-bottom: 1px solid {TOKENS['border']};
+                border-left: none; border-right: none;
+                border-radius: 0;
+                font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+                padding: 0 6px;
+            }}
+            QPushButton:hover {{ background: {TOKENS['surface_alt']}; }}
+        """
+        seg_right = f"""
+            QPushButton {{
+                background: {TOKENS['surface']}; color: {TOKENS['text_secondary']};
+                border: 1px solid {TOKENS['border']};
+                border-top-right-radius: 13px; border-bottom-right-radius: 13px;
+                border-top-left-radius: 0; border-bottom-left-radius: 0;
+                border-left: none;
+                font-size: 12px; font-weight: 700; padding: 0;
+            }}
+            QPushButton:hover {{ color: {TOKENS['text_primary']}; background: {TOKENS['surface_alt']}; }}
+        """
+
+        self.btn_font_dec = QPushButton("−")
+        self.btn_font_dec.setFixedSize(26, 26)
         self.btn_font_dec.setToolTip("Decrease font size (Ctrl −)")
-        self.btn_font_dec.setStyleSheet(font_btn_style)
+        self.btn_font_dec.setStyleSheet(seg_left)
         self.btn_font_dec.clicked.connect(self._font_down)
-        lay.addWidget(self.btn_font_dec)
+        fg_lay.addWidget(self.btn_font_dec)
 
-        self.btn_font_reset = QPushButton("A")
-        self.btn_font_reset.setFixedSize(24, 26)
+        self.btn_font_reset = QPushButton(f"{self._font_size}")
+        self.btn_font_reset.setFixedHeight(26)
+        self.btn_font_reset.setMinimumWidth(30)
         self.btn_font_reset.setToolTip("Reset font size (Ctrl 0)")
-        self.btn_font_reset.setStyleSheet(font_btn_style)
+        self.btn_font_reset.setStyleSheet(seg_mid)
         self.btn_font_reset.clicked.connect(self._font_reset)
-        lay.addWidget(self.btn_font_reset)
+        fg_lay.addWidget(self.btn_font_reset)
 
-        self.btn_font_inc = QPushButton("A+")
-        self.btn_font_inc.setFixedSize(28, 26)
+        self.btn_font_inc = QPushButton("+")
+        self.btn_font_inc.setFixedSize(26, 26)
         self.btn_font_inc.setToolTip("Increase font size (Ctrl +)")
-        self.btn_font_inc.setStyleSheet(font_btn_style)
+        self.btn_font_inc.setStyleSheet(seg_right)
         self.btn_font_inc.clicked.connect(self._font_up)
-        lay.addWidget(self.btn_font_inc)
+        fg_lay.addWidget(self.btn_font_inc)
 
-        # Refresh button
+        lay.addWidget(font_group)
+
+        # Refresh button — amber accent (design)
+        amber = TOKENS["accent_amber"]
         self.btn_refresh = QPushButton("⟳  Refresh")
-        self.btn_refresh.setFixedSize(88, 26)
+        self.btn_refresh.setFixedHeight(26)
+        self.btn_refresh.setMinimumWidth(94)
         self.btn_refresh.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: {COLORS['accent']};
-                border: 1px solid {COLORS['accent']};
+                color: {amber};
+                border: 1px solid {amber};
                 border-radius: 4px;
-                font-size: {fs(14)}px;
+                font-size: {fs(11)}px;
+                padding: 0 12px;
             }}
-            QPushButton:hover   {{ background: {COLORS['accent']}; color: {COLORS['bg']}; }}
-            QPushButton:disabled {{ color: {COLORS['text_secondary']};
-                                    border-color: {COLORS['card_border']}; }}
+            QPushButton:hover    {{ background: {amber}; color: {TOKENS['bg']}; }}
+            QPushButton:disabled {{ color: {TOKENS['text_secondary']};
+                                     border-color: {TOKENS['border']}; }}
         """)
         self.btn_refresh.clicked.connect(self.refresh_all)
         lay.addWidget(self.btn_refresh)
+
         return bar
 
     # ── Tab regime dot icons ────────────────────────────────────────────────────
@@ -457,6 +600,20 @@ class MainWindow(QMainWindow):
         apply_font_delta_offset(self, offset)
         self._applied_font_delta = new_delta
 
+        # Bump explicit QFont point sizes on widgets that don't rely on
+        # stylesheet font-size (custom-painted widgets, labels using setFont).
+        if offset != 0:
+            for w in [self] + self.findChildren(QWidget):
+                f = w.font()
+                ps = f.pointSize()
+                if ps > 0:
+                    f.setPointSize(max(_MIN_FONT, ps + offset))
+                    w.setFont(f)
+                w.update()
+
+        if hasattr(self, "btn_font_reset"):
+            self.btn_font_reset.setText(f"{self._font_size}")
+
     # ── Notifications ──────────────────────────────────────────────────────────
 
     def _setup_notifications(self):
@@ -511,6 +668,58 @@ class MainWindow(QMainWindow):
     def _tick_latency_dots(self):
         for dot in self._latency_dots.values():
             dot.tick()
+        self._tick_header_clock()
+
+    def _tick_header_clock(self) -> None:
+        """Update 'Updated HH:MM:SS · next M:SS' + session sublabel each second."""
+        from datetime import datetime
+        now = datetime.now()
+        ts = getattr(self, "_last_update_ts", None)
+        if ts is None:
+            self.lbl_updated.setText("Updated —  ·  next —")
+        else:
+            remaining_ms = max(0, self._timer.remainingTime())
+            mm, ss = divmod(int(remaining_ms / 1000), 60)
+            self.lbl_updated.setText(
+                f"Updated {ts.strftime('%H:%M:%S')}  ·  next {mm}:{ss:02d}"
+            )
+        if hasattr(self, "lbl_sub_session"):
+            self.lbl_sub_session.setText(f"SESSION · {now.strftime('%H:%M')} ET")
+        self._tick_status_bar()
+
+    def _tick_status_bar(self):
+        if not hasattr(self, "lbl_status_eq"):
+            return
+        chip_to_lbl = [
+            ("equity", self.lbl_status_eq, "EQ"),
+            ("crypto", self.lbl_status_cr, "CR"),
+            ("macro", self.lbl_status_mc, "MC"),
+            ("sectors", self.lbl_status_sec, "SEC"),
+        ]
+        from datetime import datetime as _dt
+        for src, lbl, prefix in chip_to_lbl:
+            chip = self._latency_dots.get(src) if hasattr(self, "_latency_dots") else None
+            last = getattr(chip, "_last", None) if chip else None
+            if last is None:
+                lbl.setText(f"{prefix} —ms")
+                lbl.setStyleSheet(
+                    f"color: {TOKENS['text_muted']}; font-family: 'JetBrains Mono','Consolas',monospace; "
+                    f"font-size: {fs(10)}px; letter-spacing: 0.3px; background: transparent; border: none;"
+                )
+                continue
+            age_s = max(0.0, (_dt.now() - last).total_seconds())
+            if age_s < 60:
+                text = f"{prefix} {age_s * 1000:.0f}ms" if age_s < 2 else f"{prefix} {age_s:.1f}s"
+            else:
+                text = f"{prefix} {age_s / 60:.0f}m"
+            if age_s < 2:      c = TOKENS["up"]
+            elif age_s < 5:    c = TOKENS["neutral"]
+            else:              c = TOKENS["down"]
+            lbl.setText(text)
+            lbl.setStyleSheet(
+                f"color: {c}; font-family: 'JetBrains Mono','Consolas',monospace; "
+                f"font-size: {fs(10)}px; letter-spacing: 0.3px; background: transparent; border: none;"
+            )
 
     # ── Refresh ────────────────────────────────────────────────────────────────
 
@@ -542,6 +751,26 @@ class MainWindow(QMainWindow):
             self._pending.add("forward")
             self._fwd_worker.start()
 
+    def _check_regime_flip(self, source: str, new_regime: str, color: str) -> None:
+        """Emit toast + log entry if ``source`` regime changed since last update."""
+        prev = self._prev_regimes.get(source)
+        self._prev_regimes[source] = new_regime
+        if prev is None or prev == new_regime:
+            return
+        tone_map = {"RISK-ON": "up", "RISK-OFF": "down", "NEUTRAL": "neutral"}
+        tone = tone_map.get(new_regime.upper(), "neutral")
+        label = source.upper()
+        msg = f"{label}: {prev} → {new_regime}"
+        try:
+            self.portfolio_tab.toast.show_toast(
+                title=f"{label} REGIME FLIP",
+                body=f"Moved from {prev} to {new_regime}.",
+                tone=tone,
+            )
+            self.portfolio_tab.signal_log.add_entry(msg, tone=tone)
+        except AttributeError:
+            pass
+
     def _on_equity_data(self, data: dict):
         self._pending.discard("equity")
         self._latency_dots["equity"].mark()
@@ -551,6 +780,21 @@ class MainWindow(QMainWindow):
         self.tabs.setTabIcon(self.tabs.indexOf(self.equity_tab),
                              self._regime_dot_icon(r["color"]))
         self.regime_badge.update_regime("equity", r["regime"], r["color"])
+        self._check_regime_flip("equity", r["regime"], r["color"])
+        # Scoreboard
+        score = int(r.get("score") or 0)
+        vix = data.get("vix")
+        breadth = data.get("breadth_pct")
+        sub_parts = []
+        if vix is not None:
+            sub_parts.append(f"VIX {vix}")
+        if breadth is not None:
+            sub_parts.append(f"Breadth {breadth:.0f}%")
+        self.portfolio_tab.scoreboard.update_source(
+            "equity", r["regime"], r["color"],
+            score=score, max_score=8, value=50 + (score / 8) * 50,
+            sub=" · ".join(sub_parts),
+        )
         self._spawn_forecast("spx", data.get("spx_hist"))
         self._finish_if_done(data.get("timestamp"))
 
@@ -563,6 +807,21 @@ class MainWindow(QMainWindow):
         self.tabs.setTabIcon(self.tabs.indexOf(self.crypto_tab),
                              self._regime_dot_icon(r["color"]))
         self.regime_badge.update_regime("crypto", r["regime"], r["color"])
+        self._check_regime_flip("crypto", r["regime"], r["color"])
+        # Scoreboard
+        score = int(r.get("score") or 0)
+        fg = data.get("crypto_fear_greed")
+        sub_parts = []
+        if fg is not None:
+            sub_parts.append(f"F&G {fg}")
+        cycle_week = data.get("halving_week")
+        if cycle_week:
+            sub_parts.append(f"Cycle wk {int(cycle_week)}")
+        self.portfolio_tab.scoreboard.update_source(
+            "crypto", r["regime"], r["color"],
+            score=score, max_score=12, value=50 + (score / 12) * 50,
+            sub=" · ".join(sub_parts),
+        )
         self._spawn_forecast("btc", data.get("btc_hist"))
         self._finish_if_done(data.get("timestamp"))
 
@@ -605,6 +864,21 @@ class MainWindow(QMainWindow):
         self.tabs.setTabIcon(self.tabs.indexOf(self.macro_tab),
                              self._regime_dot_icon(r["color"]))
         self.regime_badge.update_regime("macro", r["regime"], r["color"])
+        self._check_regime_flip("macro", r["regime"], r["color"])
+        # Scoreboard
+        score = int(r.get("score") or 0)
+        move = data.get("move")
+        curve = data.get("yield_spread")
+        sub_parts = []
+        if move is not None:
+            sub_parts.append(f"MOVE {move:.0f}")
+        if curve is not None:
+            sub_parts.append(f"Curve {curve:+.0f}bp")
+        self.portfolio_tab.scoreboard.update_source(
+            "macro", r["regime"], r["color"],
+            score=score, max_score=8, value=50 + (score / 8) * 50,
+            sub=" · ".join(sub_parts),
+        )
         self._finish_if_done(data.get("timestamp"))
 
     def _on_sector_data(self, data: dict):
@@ -618,6 +892,17 @@ class MainWindow(QMainWindow):
                       "MIXED":     COLORS["neutral"]}.get(rot, COLORS["na"])
         self.tabs.setTabIcon(self.tabs.indexOf(self.sectors_tab),
                              self._regime_dot_icon(icon_color))
+        # Scoreboard: sector rotation cell
+        leading = [t for t, d in data.get("sectors", {}).items()
+                   if d.get("quadrant") in ("Leading", "Improving")]
+        # Map rotation to gauge value
+        val = {"OFFENSIVE": 78, "DEFENSIVE": 22, "MIXED": 50}.get(rot, 50)
+        self.portfolio_tab.scoreboard.update_source(
+            "sectors", rot, icon_color,
+            value=val,
+            score_text=f"{len(leading)} LEADING" if leading else "—",
+            sub=", ".join(leading[:3]) + (" leading" if leading else ""),
+        )
         self._finish_if_done(data.get("timestamp"))
 
     def _on_error(self, source: str, msg: str):
@@ -629,10 +914,9 @@ class MainWindow(QMainWindow):
         if self._pending:
             return
         self.btn_refresh.setEnabled(True)
-        if ts:
-            self.lbl_updated.setText(f"Updated {ts.strftime('%H:%M:%S')}")
-        else:
-            self.lbl_updated.setText("Updated (partial)")
+        from datetime import datetime
+        self._last_update_ts = ts or datetime.now()
+        self._tick_header_clock()
 
         # Check for allocation changes and notify
         alloc_state = self.portfolio_tab.get_allocation_state()
