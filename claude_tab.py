@@ -10,7 +10,7 @@ Bottom: follow-up question input that re-uses the main analysis pipeline.
 from collections import OrderedDict
 from datetime import datetime
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QListWidget,
                               QListWidgetItem, QPushButton, QScrollArea,
                               QSizePolicy, QTextEdit, QVBoxLayout, QWidget)
@@ -62,6 +62,13 @@ class ClaudeTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._analyses_by_date: OrderedDict[str, list[dict]] = OrderedDict()
+        self._stream_target: QLabel | None = None
+        self._stream_full_text: str = ""
+        self._stream_pos: int = 0
+        self._stream_timer = QTimer(self)
+        self._stream_timer.setInterval(12)
+        self._stream_timer.timeout.connect(self._tick_stream)
+        self._just_streamed_ts: str | None = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -199,18 +206,19 @@ class ClaudeTab(QWidget):
         """)
         input_row.addWidget(self._followup_input, stretch=1)
 
+        violet = COLORS.get("violet", COLORS["accent"])
         self._btn_send = QPushButton("Send")
         self._btn_send.setFixedSize(72, 64)
         self._btn_send.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: {COLORS['accent']};
-                border: 1px solid {COLORS['accent']};
+                color: {violet};
+                border: 1px solid {violet};
                 border-radius: 6px;
                 font-size: 14px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{ background: {COLORS['accent']}; color: {COLORS['bg']}; }}
+            QPushButton:hover {{ background: {violet}; color: {COLORS['bg']}; }}
             QPushButton:disabled {{
                 color: {COLORS['text_secondary']};
                 border-color: {COLORS['card_border']};
@@ -319,9 +327,10 @@ class ClaudeTab(QWidget):
             time_display = _format_time(ts_str)
             date_display = _format_date_label(ts_str)
 
+            violet = COLORS.get("violet", COLORS["accent"])
             ts_label = QLabel(f"🤖  {date_display}  ·  {time_display}")
             ts_label.setStyleSheet(
-                f"color: {COLORS['accent']}; font-size: {fs(13)}px; "
+                f"color: {violet}; font-size: {fs(13)}px; "
                 f"font-weight: bold; border: none; padding: 0px;"
             )
             self._content_layout.addWidget(ts_label)
@@ -347,8 +356,35 @@ class ClaudeTab(QWidget):
             body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             self._content_layout.addWidget(body)
 
+            if i == 0 and self._just_streamed_ts == entry.get("timestamp"):
+                self._begin_stream(body, response_text)
+                self._just_streamed_ts = None
+
         self._content_layout.addStretch()
         self._content_widget.adjustSize()
+
+    # ── Streaming reveal ──────────────────────────────────────────────────────
+
+    def _begin_stream(self, target: QLabel, text: str):
+        """Reveal ``text`` in ``target`` char-by-char (4 chars / 12ms tick)."""
+        self._stream_timer.stop()
+        self._stream_target = target
+        self._stream_full_text = text
+        self._stream_pos = 0
+        target.setText("▊")
+        self._stream_timer.start()
+
+    def _tick_stream(self):
+        if self._stream_target is None:
+            self._stream_timer.stop()
+            return
+        self._stream_pos = min(len(self._stream_full_text), self._stream_pos + 5)
+        partial = self._stream_full_text[: self._stream_pos]
+        caret = "▊" if self._stream_pos < len(self._stream_full_text) else ""
+        self._stream_target.setText(partial + caret)
+        if self._stream_pos >= len(self._stream_full_text):
+            self._stream_timer.stop()
+            self._stream_target = None
 
     # ── Follow-up handling ────────────────────────────────────────────────────
 
@@ -379,6 +415,11 @@ class ClaudeTab(QWidget):
         self._followup_status.setStyleSheet(
             f"color: {COLORS['risk_on']}; font-size: 12px; border: none;"
         )
+        # Mark newest entry for stream-reveal, then reload.
+        from ai_analysis import get_recent_analyses
+        recent = get_recent_analyses(limit=1)
+        if recent:
+            self._just_streamed_ts = recent[0].get("timestamp")
         self.reload()
 
     def on_followup_error(self):
