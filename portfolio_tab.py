@@ -364,17 +364,12 @@ class PortfolioTab(QWidget):
         self.signal_log = SignalLog(max_entries=10)
         lay.addWidget(self.signal_log)
 
-        # Row 1: Equity/Bond Allocation + Bitcoin
-        row1 = QHBoxLayout(); row1.setSpacing(6)
-        row1.addWidget(self._build_allocation_card(), stretch=2)
-        row1.addWidget(self._build_btc_card(), stretch=1)
-        lay.addLayout(row1)
-
-        # Row 2: IBIT Premium + SPX Premium
-        row2 = QHBoxLayout(); row2.setSpacing(6)
-        row2.addWidget(self._build_ibit_premium_card(), stretch=1)
-        row2.addWidget(self._build_premium_card(), stretch=2)
-        lay.addLayout(row2)
+        # Portfolio allocation: 3 equal cards in one row
+        row = QHBoxLayout(); row.setSpacing(6)
+        row.addWidget(self._build_passive_etf_card(), stretch=1)
+        row.addWidget(self._build_btc_ibit_card(), stretch=1)
+        row.addWidget(self._build_spx_card(), stretch=1)
+        lay.addLayout(row)
 
         scroll.setWidget(inner)
         outer = QVBoxLayout(self)
@@ -483,171 +478,139 @@ class PortfolioTab(QWidget):
         lay.addSpacing(28); lay.addWidget(self.lbl_overall)
         return frame
 
-    # ── Equity/Bond Allocation card ───────────────────────────────────────────
+    # ── Passive ETF Allocation card ───────────────────────────────────────────
 
-    def _build_allocation_card(self):
+    def _build_passive_etf_card(self):
         frame = self._card()
         lay = QVBoxLayout(frame); lay.setContentsMargins(12, 10, 12, 10); lay.setSpacing(4)
 
-        hdr = QLabel("EQUITY / BOND TARGET  (40% sleeve)")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-        sub = QLabel("Single allocation number  ·  equity + macro + rates + credit + vol")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
-        lay.addWidget(hdr); lay.addWidget(sub)
+        hdr = QHBoxLayout()
+        t = QLabel("PASSIVE ETFs")
+        t.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
+        badge = QLabel("40% NW")
+        badge.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; border: none;")
+        hdr.addWidget(t); hdr.addStretch(); hdr.addWidget(badge)
+        lay.addLayout(hdr)
 
-        strip, self._alloc_chips_lay = self._chip_strip()
-        lay.addWidget(strip)
-
-        drivers = QHBoxLayout()
-        self.lbl_alloc_eq = QLabel("EQUITY: —")
-        self.lbl_alloc_mc = QLabel("MACRO: —")
-        for l in (self.lbl_alloc_eq, self.lbl_alloc_mc):
-            l.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-            drivers.addWidget(l)
-        drivers.addStretch()
-        lay.addLayout(drivers)
-
-        lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("RECOMMENDED SPLIT"))
-
-        split_row = QHBoxLayout()
-        self.lbl_eq_split = QLabel("EQ: —%")
-        self.lbl_eq_split.setStyleSheet(f"color: {COLORS['risk_on']}; font-size: {fs(38)}px; font-weight: bold; border: none;")
-        self.lbl_bond_split = QLabel("BOND: —%")
-        self.lbl_bond_split.setStyleSheet(f"color: {COLORS['accent']}; font-size: {fs(38)}px; font-weight: bold; border: none;")
-        split_row.addWidget(self.lbl_eq_split); split_row.addWidget(self.lbl_bond_split)
-        lay.addLayout(split_row)
+        self.lbl_deployed = QLabel("—")
+        self.lbl_deployed.setStyleSheet(
+            f"color: {COLORS['risk_on']}; font-size: {fs(36)}px; font-weight: bold; border: none;")
+        lay.addWidget(self.lbl_deployed)
 
         self.bar_eq_bond = self._bar()
         lay.addWidget(self.bar_eq_bond)
 
-        lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("ADJUSTMENT DRIVERS"))
-        self._alloc_driver_lbls = [self._signal_lbl() for _ in range(8)]
-        for l in self._alloc_driver_lbls:
-            lay.addWidget(l)
+        def _alloc_row(label):
+            row = QHBoxLayout(); row.setSpacing(0)
+            lbl = QLabel(label)
+            lbl.setStyleSheet(
+                f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
+            val = QLabel("—")
+            val.setStyleSheet(
+                f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; border: none;")
+            row.addWidget(lbl); row.addStretch(); row.addWidget(val)
+            lay.addLayout(row)
+            return val
+
+        self.lbl_passive_eq_val   = _alloc_row("Equity (VTI/VXUS)")
+        self.lbl_passive_bond_val = _alloc_row("Bonds (BND/BNDX)")
 
         lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("BOND ENVIRONMENT"))
 
-        self.lbl_move_ctx = QLabel("MOVE: —")
-        self.lbl_move_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        self.lbl_real_yld_ctx = QLabel("Real Yield: —")
-        self.lbl_real_yld_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        self.lbl_be_ctx = QLabel("5Y Breakeven: —")
-        self.lbl_be_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        self.lbl_hy_ctx = QLabel("HY Spread: —")
-        self.lbl_hy_ctx.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        for l in (self.lbl_move_ctx, self.lbl_real_yld_ctx, self.lbl_be_ctx, self.lbl_hy_ctx):
-            lay.addWidget(l)
-        lay.addStretch()
-        return frame
+        tgt_row = QHBoxLayout()
+        tgt_lbl = QLabel("ALLOCATION TARGET")
+        tgt_lbl.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; letter-spacing: 1px; border: none;")
+        self.lbl_alloc_target = QLabel("— / —")
+        self.lbl_alloc_target.setStyleSheet(
+            f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
+        tgt_row.addWidget(tgt_lbl); tgt_row.addStretch(); tgt_row.addWidget(self.lbl_alloc_target)
+        lay.addLayout(tgt_row)
 
-    # ── BTC card ──────────────────────────────────────────────────────────────
-
-    def _build_btc_card(self):
-        frame = self._card()
-        lay = QVBoxLayout(frame); lay.setContentsMargins(12, 10, 12, 10); lay.setSpacing(4)
-
-        hdr = QLabel("BITCOIN  IBIT  (40% sleeve)")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-        sub = QLabel("Crypto regime + cycle → deployed %")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
-        lay.addWidget(hdr); lay.addWidget(sub)
-
-        self.lbl_btc_regime = QLabel("CRYPTO: —")
-        self.lbl_btc_regime.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-        lay.addWidget(self.lbl_btc_regime)
-
-        strip, self._btc_chips_lay = self._chip_strip()
+        strip, self._alloc_chips_lay = self._chip_strip()
         lay.addWidget(strip)
 
-        lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("DEPLOYED"))
-
-        self.lbl_btc_pct  = self._big_lbl()
-        self.bar_btc      = self._bar()
-        self.lbl_btc_cash = QLabel("Cash (SGOV): —")
-        self.lbl_btc_cash.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        self.lbl_btc_gold = QLabel("BTC/Gold: —")
-        self.lbl_btc_gold.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        lay.addWidget(self.lbl_btc_pct); lay.addWidget(self.bar_btc)
-        lay.addWidget(self.lbl_btc_cash); lay.addWidget(self.lbl_btc_gold)
-
-        lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("PRICE & TREND"))
-        self.lbl_btc_price = QLabel("BTC: —")
-        self.lbl_btc_price.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-        self.lbl_btc_200dma = QLabel("200 DMA: —")
-        self.lbl_btc_200dma.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        self.lbl_btc_ath = QLabel("From ATH: —")
-        self.lbl_btc_ath.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        lay.addWidget(self.lbl_btc_price); lay.addWidget(self.lbl_btc_200dma); lay.addWidget(self.lbl_btc_ath)
-
-        lay.addWidget(self._divider())
-        self.cycle_clock = CycleClockWidget()
-        lay.addWidget(self.cycle_clock, alignment=Qt.AlignmentFlag.AlignHCenter)
-
-        lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("KEY SIGNALS"))
-        self._btc_sigs = [self._signal_lbl() for _ in range(4)]
-        for l in self._btc_sigs: lay.addWidget(l)
         lay.addStretch()
         return frame
 
-    # ── IBIT Premium card ─────────────────────────────────────────────────────
+    # ── Bitcoin / IBIT card (merged) ──────────────────────────────────────────
 
-    def _build_ibit_premium_card(self):
+    def _build_btc_ibit_card(self):
         frame = self._card()
         lay = QVBoxLayout(frame); lay.setContentsMargins(12, 10, 12, 10); lay.setSpacing(4)
 
-        hdr = QLabel("IBIT  PREMIUM OVERLAY")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-        sub = QLabel("CC (0.15∆) + CSP (0.20∆)  ·  size by crypto regime")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
-        lay.addWidget(hdr); lay.addWidget(sub)
+        hdr = QHBoxLayout()
+        t = QLabel("BITCOIN / IBIT")
+        t.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
+        badge = QLabel("40% NW")
+        badge.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; border: none;")
+        hdr.addWidget(t); hdr.addStretch(); hdr.addWidget(badge)
+        lay.addLayout(hdr)
+
+        self.lbl_btc_regime = QLabel("CRYPTO: —")
+        self.lbl_btc_regime.setStyleSheet(
+            f"color: {COLORS['na']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
+        lay.addWidget(self.lbl_btc_regime)
+
+        self.lbl_btc_pct = self._big_lbl()
+        self.bar_btc = self._bar()
+        lay.addWidget(self.lbl_btc_pct); lay.addWidget(self.bar_btc)
+
+        self.lbl_btc_desc = QLabel("")
+        self.lbl_btc_desc.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
+        self.lbl_btc_desc.setWordWrap(True)
+        lay.addWidget(self.lbl_btc_desc)
 
         lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("POSITION SIZING"))
-        self.lbl_ibit_sizing = self._big_lbl()
-        self.lbl_ibit_sizing_desc = QLabel("")
-        self.lbl_ibit_sizing_desc.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
-        self.lbl_ibit_sizing_desc.setWordWrap(True)
-        lay.addWidget(self.lbl_ibit_sizing); lay.addWidget(self.lbl_ibit_sizing_desc)
+
+        def _detail_row(label):
+            row = QHBoxLayout(); row.setSpacing(0)
+            lbl = QLabel(label)
+            lbl.setStyleSheet(
+                f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
+            val = QLabel("—")
+            val.setStyleSheet(
+                f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; border: none;")
+            val.setWordWrap(True)
+            row.addWidget(lbl, stretch=0); row.addSpacing(6); row.addWidget(val, stretch=1)
+            lay.addLayout(row)
+            return val
+
+        self.lbl_ibit_core_val = _detail_row("IBIT core")
+        self.lbl_ibit_cc       = _detail_row("CC overlay (0.15Δ)")
+        self.lbl_ibit_csp      = _detail_row("CSP (0.20Δ)")
 
         lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("IV / RV CONDITIONS"))
-        self.lbl_ibit_iv = QLabel("IBIT IV: —")
-        self.lbl_ibit_iv.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(13)}px; border: none;")
-        self.lbl_ibit_iv_rv = QLabel("IV/RV Spread: —")
-        self.lbl_ibit_iv_rv.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(13)}px; border: none;")
-        lay.addWidget(self.lbl_ibit_iv); lay.addWidget(self.lbl_ibit_iv_rv)
 
-        lay.addWidget(self._divider())
-        lay.addWidget(self._section_lbl("STRATEGY"))
-        self.lbl_ibit_lean = QLabel("LEAN: —")
-        self.lbl_ibit_lean.setStyleSheet(f"color: {COLORS['na']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
-        self.lbl_ibit_cc = QLabel("CC: —")
-        self.lbl_ibit_cc.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
-        self.lbl_ibit_cc.setWordWrap(True)
-        self.lbl_ibit_csp = QLabel("CSP: —")
-        self.lbl_ibit_csp.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; border: none;")
-        self.lbl_ibit_csp.setWordWrap(True)
-        lay.addWidget(self.lbl_ibit_lean); lay.addWidget(self.lbl_ibit_cc); lay.addWidget(self.lbl_ibit_csp)
+        self.lbl_cycle_phase_info = QLabel("CYCLE PHASE  —")
+        self.lbl_cycle_phase_info.setStyleSheet(
+            f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; letter-spacing: 1px; border: none;")
+        lay.addWidget(self.lbl_cycle_phase_info)
+
+        strip, self._btc_ibit_chips_lay = self._chip_strip()
+        lay.addWidget(strip)
+
+        self.cycle_clock = CycleClockWidget()
+        self.cycle_clock.setFixedHeight(180)
+        lay.addWidget(self.cycle_clock, alignment=Qt.AlignmentFlag.AlignHCenter)
+
         lay.addStretch()
         return frame
 
     # ── SPX Premium card ──────────────────────────────────────────────────────
 
-    def _build_premium_card(self):
+    def _build_spx_card(self):
         frame = self._card()
         lay = QVBoxLayout(frame); lay.setContentsMargins(12, 10, 12, 10); lay.setSpacing(4)
 
-        hdr = QLabel("SPX / ES  PREMIUM SELLING  (20% sleeve)")
-        hdr.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-        sub = QLabel("Income strategy  ·  size by VIX percentile  ·  idle cash in treasuries")
-        sub.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(14)}px; border: none;")
-        lay.addWidget(hdr); lay.addWidget(sub)
+        spx_hdr = QHBoxLayout()
+        t = QLabel("SPX PREMIUM SELLING")
+        t.setStyleSheet(f"color: {COLORS['text_primary']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
+        badge = QLabel("20% NW")
+        badge.setStyleSheet(f"color: {COLORS['text_secondary']}; font-size: {fs(12)}px; border: none;")
+        spx_hdr.addWidget(t); spx_hdr.addStretch(); spx_hdr.addWidget(badge)
+        lay.addLayout(spx_hdr)
 
         strip, self._spx_chips_lay = self._chip_strip()
         lay.addWidget(strip)
@@ -728,10 +691,9 @@ class PortfolioTab(QWidget):
         ivr        = _iv_rank(vix, vix_hist)
 
         self._update_header(eq, cr, mc)
-        self._update_allocation_card(eq, mc, vix, vix_pctile)
-        self._update_btc_card(cr)
-        self._update_ibit_premium_card(cr)
-        self._update_premium_card(self._equity_data, eq, mc, vix_pctile, ivr)
+        self._update_passive_etf_card(eq, mc, vix, vix_pctile)
+        self._update_btc_ibit_card(cr)
+        self._update_spx_card(self._equity_data, eq, mc, vix_pctile, ivr)
 
         # Only update allocation state/snapshot when all data sources are populated.
         # This prevents partial-data recommendations and spurious allocation notifications.
@@ -789,37 +751,31 @@ class PortfolioTab(QWidget):
             lbl.setText(f"{prefix}: {rd['regime']}")
             lbl.setStyleSheet(f"color: {rd['color']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
 
-    # ── Equity/Bond Allocation ────────────────────────────────────────────────
+    # ── Passive ETF Allocation ────────────────────────────────────────────────
 
-    def _update_allocation_card(self, eq, mc, vix, vix_pctile):
-        move       = self._macro_data.get("move")
-        hy_spread  = self._macro_data.get("hy_spread")
-        yld_spread = self._macro_data.get("yield_spread")
-        real_yld   = self._macro_data.get("real_yield_10y")
-        be5y       = self._macro_data.get("breakeven_5y")
-        eq_score   = eq.get("score", 0)
-        mc_score   = mc.get("score", 0)
+    def _update_passive_etf_card(self, eq, mc, vix, vix_pctile):
+        move      = self._macro_data.get("move")
+        hy_spread = self._macro_data.get("hy_spread")
+        eq_score  = eq.get("score", 0)
+        mc_score  = mc.get("score", 0)
 
-        eq_pct, bond_pct, driver_notes = _equity_bond_split(
-            eq_score, mc_score, vix, vix_pctile,
-            move, hy_spread, yld_spread, real_yld, be5y,
+        eq_pct, bond_pct, _ = _equity_bond_split(
+            eq_score, mc_score, vix, vix_pctile, move, hy_spread,
+            self._macro_data.get("yield_spread"),
+            self._macro_data.get("real_yield_10y"),
+            self._macro_data.get("breakeven_5y"),
         )
 
-        self.lbl_alloc_eq.setText(f"EQUITY: {eq['regime']}  ({eq_score:+d}/8)")
-        self.lbl_alloc_eq.setStyleSheet(f"color: {eq['color']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-        self.lbl_alloc_mc.setText(f"  MACRO: {mc['regime']}  ({mc_score:+d}/7)")
-        self.lbl_alloc_mc.setStyleSheet(f"color: {mc['color']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
-
         eq_color = COLORS["risk_on"] if eq_pct >= 75 else (COLORS["neutral"] if eq_pct >= 60 else COLORS["risk_off"])
-        self.lbl_eq_split.setText(f"EQ: {eq_pct}%")
-        self.lbl_eq_split.setStyleSheet(f"color: {eq_color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
-        self.lbl_bond_split.setText(f"BOND: {bond_pct}%")
-        self.lbl_bond_split.setStyleSheet(f"color: {COLORS['accent']}; font-size: {fs(38)}px; font-weight: bold; border: none;")
+        self.lbl_deployed.setText(f"{eq_pct}% deployed")
+        self.lbl_deployed.setStyleSheet(
+            f"color: {eq_color}; font-size: {fs(36)}px; font-weight: bold; border: none;")
         self.bar_eq_bond.setValue(eq_pct)
         self.bar_eq_bond.setStyleSheet(_bar_style(eq_color))
 
-        for i, lbl in enumerate(self._alloc_driver_lbls):
-            lbl.setText(f"• {driver_notes[i]}" if i < len(driver_notes) else "")
+        self.lbl_passive_eq_val.setText(f"{eq_pct}%")
+        self.lbl_passive_bond_val.setText(f"{bond_pct}%")
+        self.lbl_alloc_target.setText(f"{eq_pct} / {bond_pct}")
 
         chips = []
         eq_dir = "up" if eq_score > 0 else ("down" if eq_score < 0 else "neutral")
@@ -829,32 +785,15 @@ class PortfolioTab(QWidget):
         if move is not None:
             mv_dir = "down" if move > 130 else ("up" if move < 80 else "neutral")
             chips.append(("MOVE", f"{move:.0f}", mv_dir))
-        if vix_pctile is not None:
-            vp_dir = "down" if vix_pctile >= 70 else ("up" if vix_pctile < 30 else "neutral")
-            chips.append(("VIX PCT", f"{vix_pctile:.0f}", vp_dir))
         if hy_spread is not None:
             hy_dir = "down" if hy_spread > 5 else ("up" if hy_spread < 3 else "neutral")
-            chips.append(("HY", f"{hy_spread:.1f}%", hy_dir))
-        chips.append(("TARGET", f"{eq_pct:.0f}/{bond_pct:.0f}", "muted"))
+            chips.append(("HY OAS", f"{hy_spread:.1f}%", hy_dir))
         self._set_chips(self._alloc_chips_lay, chips)
 
-        if move is not None:
-            mc_color = COLORS["risk_off"] if move > 130 else (COLORS["risk_on"] if move < 80 else COLORS["text_primary"])
-            self.lbl_move_ctx.setText(f"MOVE: {move:.0f}")
-            self.lbl_move_ctx.setStyleSheet(f"color: {mc_color}; font-size: {fs(13)}px; border: none;")
-        if real_yld is not None:
-            self.lbl_real_yld_ctx.setText(f"10Y Real Yield: {real_yld:.2f}%")
-        if be5y is not None:
-            self.lbl_be_ctx.setText(f"5Y Breakeven: {be5y:.2f}%")
-        if hy_spread is not None:
-            hy_c = COLORS["risk_off"] if hy_spread > 5 else (COLORS["risk_on"] if hy_spread < 3 else COLORS["text_primary"])
-            self.lbl_hy_ctx.setText(f"HY Spread: {hy_spread:.2f}%")
-            self.lbl_hy_ctx.setStyleSheet(f"color: {hy_c}; font-size: {fs(13)}px; border: none;")
+    # ── Bitcoin / IBIT ────────────────────────────────────────────────────────
 
-    # ── BTC ────────────────────────────────────────────────────────────────────
-
-    def _update_btc_card(self, cr):
-        # Push live halving data to the clock widget before reading its state
+    def _update_btc_ibit_card(self, cr):
+        # Live halving data → clock widget
         h_progress    = self._crypto_data.get("halving_progress")
         h_days_in     = self._crypto_data.get("halving_days_in")
         h_days_left   = self._crypto_data.get("halving_days_remaining")
@@ -863,91 +802,63 @@ class PortfolioTab(QWidget):
             self.cycle_clock.update_live(h_days_in, h_days_left, h_progress,
                                          blocks_left=h_blocks_left)
 
-        exposure = _btc_exposure(cr.get("score", 0))
-        color = _exposure_color(exposure)
+        cr_score   = cr.get("score", 0)
+        exposure   = _btc_exposure(cr_score)
+        color      = _exposure_color(exposure)
         cyc_action = self.cycle_clock.get_action()
-        self.lbl_btc_regime.setText(f"CRYPTO: {cr['regime']}  ({cr.get('score', 0):+d})  ·  {cyc_action}")
-        self.lbl_btc_regime.setStyleSheet(f"color: {cr['color']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
+        cyc_phase  = self.cycle_clock.get_phase()
+        week_in    = (h_days_in or 0) // 7
+
+        self.lbl_btc_regime.setText(f"CRYPTO: {cr['regime']}  ({cr_score:+d})  ·  {cyc_action}")
+        self.lbl_btc_regime.setStyleSheet(
+            f"color: {cr['color']}; font-size: {fs(14)}px; font-weight: bold; border: none;")
         self.lbl_btc_pct.setText(f"{exposure}%")
-        self.lbl_btc_pct.setStyleSheet(f"color: {color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
+        self.lbl_btc_pct.setStyleSheet(
+            f"color: {color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
         self.bar_btc.setValue(exposure); self.bar_btc.setStyleSheet(_bar_style(color))
-        self.lbl_btc_cash.setText(f"Cash (SGOV): {100 - exposure}%")
 
-        btc = self._crypto_data.get("btc_price")
-        gold = self._macro_data.get("gold")
-        if btc is not None and gold is not None and gold > 0:
-            self.lbl_btc_gold.setText(f"BTC/Gold: {btc / gold:.2f} oz")
+        # Description: regime + cycle context
+        regime_str = cr['regime'].lower().replace("risk-", "risk ")
+        self.lbl_btc_desc.setText(
+            f"{regime_str.capitalize()} regime · post-halving wk {week_in}.  {cyc_action}.")
 
-        # Price & trend section
-        if btc is not None:
-            self.lbl_btc_price.setText(f"BTC: ${btc:,.0f}")
-        btc_200dma = self._crypto_data.get("btc_ma200")
-        btc_above  = self._crypto_data.get("btc_above_200ma")
-        pct_200    = self._crypto_data.get("btc_pct_from_200ma")
-        if btc_200dma is not None:
-            trend = "above" if btc_above else "below"
-            c200  = COLORS["risk_on"] if btc_above else COLORS["risk_off"]
-            pct_str = f"  ({pct_200:+.1f}%)" if pct_200 is not None else ""
-            self.lbl_btc_200dma.setText(f"200 DMA: ${btc_200dma:,.0f}  [{trend}{pct_str}]")
-            self.lbl_btc_200dma.setStyleSheet(f"color: {c200}; font-size: {fs(13)}px; border: none;")
-        btc_ath_pct = self._crypto_data.get("btc_pct_from_ath")
-        if btc_ath_pct is not None:
-            ath_c = COLORS["risk_on"] if btc_ath_pct > -10 else (COLORS["neutral"] if btc_ath_pct > -30 else COLORS["risk_off"])
-            self.lbl_btc_ath.setText(f"From ATH: {btc_ath_pct:.1f}%")
-            self.lbl_btc_ath.setStyleSheet(f"color: {ath_c}; font-size: {fs(13)}px; border: none;")
+        # IBIT core + overlay recs
+        self.lbl_ibit_core_val.setText(f"{exposure}%")
+        btc_rv30   = self._crypto_data.get("btc_rv30")
+        ibit_price = self._crypto_data.get("ibit_price")
+        recs = _ibit_strategy_recs(cr_score, ibit_price, btc_rv30)
+        self.lbl_ibit_cc.setText(recs["cc_action"])
+        self.lbl_ibit_cc.setStyleSheet(
+            f"color: {recs['cc_color']}; font-size: {fs(13)}px; border: none;")
+        self.lbl_ibit_csp.setText(recs["csp_action"])
+        self.lbl_ibit_csp.setStyleSheet(
+            f"color: {recs['csp_color']}; font-size: {fs(13)}px; border: none;")
 
-        sigs = _key_signals(cr.get("factors", []), 4)
-        for i, lbl in enumerate(self._btc_sigs):
-            lbl.setText(f"• {sigs[i]}" if i < len(sigs) else "")
+        # Cycle phase line
+        self.lbl_cycle_phase_info.setText(
+            f"CYCLE PHASE  {cyc_phase}  ·  wk {week_in} / 208")
 
-        cr_score = cr.get("score", 0)
+        # Chips
         cr_dir = "up" if cr_score > 0 else ("down" if cr_score < 0 else "neutral")
-        chips = [
-            ("CRYPTO", f"{cr_score:+d}", cr_dir),
-            ("EXPOSURE", f"{exposure}%", "up" if exposure >= 60 else ("down" if exposure < 30 else "neutral")),
-            ("CYCLE", cyc_action.split()[0] if cyc_action else "—", "muted"),
-        ]
-        btc_rv30 = self._crypto_data.get("btc_rv30")
+        chips = [("CRYPTO", f"{cr_score:+d}", cr_dir)]
+        fg = self._crypto_data.get("fear_greed")
+        if fg is not None:
+            fg_dir = "up" if fg > 65 else ("down" if fg < 35 else "neutral")
+            chips.append(("F&G", f"{fg:.0f}", fg_dir))
+        pct_200 = self._crypto_data.get("btc_pct_from_200ma")
+        if pct_200 is not None:
+            chips.append(("200D MA", f"{pct_200:+.0f}%", "up" if pct_200 > 0 else "down"))
         if btc_rv30 is not None:
             chips.append(("RV30", f"{btc_rv30:.0f}%", "muted"))
-        self._set_chips(self._btc_chips_lay, chips)
-
-    # ── IBIT Premium ──────────────────────────────────────────────────────────
-
-    def _update_ibit_premium_card(self, cr):
-        cr_score = cr.get("score", 0)
-        btc_rv30 = self._crypto_data.get("btc_rv30")
-        ibit_price = self._crypto_data.get("ibit_price")
-
-        sizing, sizing_label = _ibit_premium_sizing(cr_score, btc_rv30)
-        sizing_color = _exposure_color(int(sizing * 100))
-        self.lbl_ibit_sizing.setText(f"{sizing:.2f}×")
-        self.lbl_ibit_sizing.setStyleSheet(f"color: {sizing_color}; font-size: {fs(38)}px; font-weight: bold; border: none;")
-        self.lbl_ibit_sizing_desc.setText(sizing_label)
-
-        ibit_iv = self._crypto_data.get("ibit_iv")
-        ibit_rv = self._crypto_data.get("ibit_rv21")
-        if ibit_iv is not None:
-            self.lbl_ibit_iv.setText(f"IBIT IV: {ibit_iv:.1f}%")
-            if ibit_rv is not None:
-                spread = ibit_iv - ibit_rv
-                if spread > 5:     label, c = "premium rich", COLORS["risk_on"]
-                elif spread < -5:  label, c = "premium cheap", COLORS["risk_off"]
-                else:              label, c = "fair", COLORS["neutral"]
-                self.lbl_ibit_iv_rv.setText(f"IV/RV Spread: {spread:+.1f}pp  ({label})  ·  RV21: {ibit_rv:.1f}%")
-                self.lbl_ibit_iv_rv.setStyleSheet(f"color: {c}; font-size: {fs(13)}px; border: none;")
-
-        recs = _ibit_strategy_recs(cr_score, ibit_price, btc_rv30)
-        self.lbl_ibit_lean.setText(recs["lean"])
-        self.lbl_ibit_lean.setStyleSheet(f"color: {recs['lean_color']}; font-size: {fs(13)}px; font-weight: bold; border: none;")
-        self.lbl_ibit_cc.setText(f"CC: {recs['cc_action']}")
-        self.lbl_ibit_cc.setStyleSheet(f"color: {recs['cc_color']}; font-size: {fs(14)}px; border: none;")
-        self.lbl_ibit_csp.setText(f"CSP: {recs['csp_action']}")
-        self.lbl_ibit_csp.setStyleSheet(f"color: {recs['csp_color']}; font-size: {fs(14)}px; border: none;")
+        ath_pct = self._crypto_data.get("btc_pct_from_ath")
+        if ath_pct is not None:
+            chips.append(("ATH DIST", f"{ath_pct:.0f}%",
+                          "up" if ath_pct > -10 else ("neutral" if ath_pct > -30 else "down")))
+        self._set_chips(self._btc_ibit_chips_lay, chips)
 
     # ── SPX Premium ───────────────────────────────────────────────────────────
 
-    def _update_premium_card(self, eq_data, eq_regime, mc_regime, vix_pctile, ivr=None):
+    def _update_spx_card(self, eq_data, eq_regime, mc_regime, vix_pctile, ivr=None):
         vix = eq_data.get("vix")
         sizing, sizing_label = _premium_sizing(vix_pctile, eq_regime["regime"])
 
