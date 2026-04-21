@@ -19,7 +19,7 @@ from history_db import get_recent_snapshots, get_regime_transitions
 load_dotenv()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-_MODEL = "claude-sonnet-4-20250514"
+_MODEL = "claude-sonnet-4-6"
 _MAX_TOKENS = 2048
 _DB_PATH = Path(__file__).parent / "risk_monitor_history.db"
 
