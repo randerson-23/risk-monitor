@@ -492,8 +492,12 @@ def fetch_bitcoin_extra_data() -> dict:
         # Next halving at block 1,050,000; last was block 840,000 (Apr 19 2024)
         _NEXT_HALVING_BLOCK = 1_050_000
         _LAST_HALVING_DATE  = datetime(2024, 4, 19)
-        block_height = int(data.get("height", 0))
-        time_avg_ms  = float(data.get("timeAvg", 600_000))   # ms per block, default 10 min
+        # Derive current height from nextRetargetHeight - remainingBlocks (always present);
+        # fall back to the direct "height" key if available.
+        next_retarget  = int(data.get("nextRetargetHeight", 0))
+        remaining_blks = int(data.get("remainingBlocks", 0))
+        block_height   = int(data.get("height", 0)) or (next_retarget - remaining_blks if next_retarget > 0 else 0)
+        time_avg_ms    = float(data.get("timeAvg", 600_000))   # ms per block, default 10 min
         if block_height > 0:
             blocks_left  = max(0, _NEXT_HALVING_BLOCK - block_height)
             days_left    = blocks_left * time_avg_ms / 1_000 / 86_400
