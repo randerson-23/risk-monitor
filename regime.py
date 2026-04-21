@@ -111,9 +111,9 @@ def compute_equity_regime(data: dict) -> dict:
         else:
             factors.append(f"SKEW {skew:.1f} — normal (0)")
 
-    if score >= 3:
+    if score >= 4:
         regime = RISK_ON
-    elif score <= -2:
+    elif score <= -3:
         regime = RISK_OFF
     else:
         regime = NEUTRAL
