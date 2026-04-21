@@ -110,6 +110,9 @@ class MainWindow(QMainWindow):
         self._pending = set()
         self._sector_data: dict = {}
         self._prev_regimes: dict[str, str] = {}
+        # Regime flip debounce: track (candidate, consecutive_count) per source.
+        # A flip is only logged once the new regime holds for 2 consecutive reads.
+        self._regime_flip_pending: dict[str, tuple[str, int]] = {}
         self._settings = QSettings("RiskMonitor", "Dashboard")
         self._font_size = int(self._settings.value("ui/font_size", _DEFAULT_FONT))
         # Sync the global font delta so every stylesheet built via fs()
@@ -752,19 +755,44 @@ class MainWindow(QMainWindow):
             self._fwd_worker.start()
 
     def _check_regime_flip(self, source: str, new_regime: str, color: str) -> None:
-        """Emit toast + log entry if ``source`` regime changed since last update."""
-        prev = self._prev_regimes.get(source)
-        self._prev_regimes[source] = new_regime
-        if prev is None or prev == new_regime:
+        """Log a regime flip only after 2 consecutive identical readings (debounce)."""
+        confirmed = self._prev_regimes.get(source)
+
+        if confirmed is None:
+            # First reading — establish baseline silently
+            self._prev_regimes[source] = new_regime
+            self._regime_flip_pending.pop(source, None)
             return
+
+        if new_regime == confirmed:
+            # Back to confirmed state; discard any pending candidate
+            self._regime_flip_pending.pop(source, None)
+            return
+
+        # new_regime differs from confirmed — track or advance the candidate
+        candidate, count = self._regime_flip_pending.get(source, (new_regime, 0))
+        if new_regime != candidate:
+            # Different candidate than last time — reset
+            self._regime_flip_pending[source] = (new_regime, 1)
+            return
+
+        count += 1
+        if count < 2:
+            self._regime_flip_pending[source] = (new_regime, count)
+            return
+
+        # Two consecutive reads agree — confirm the flip
+        self._prev_regimes[source] = new_regime
+        self._regime_flip_pending.pop(source, None)
+
         tone_map = {"RISK-ON": "up", "RISK-OFF": "down", "NEUTRAL": "neutral"}
         tone = tone_map.get(new_regime.upper(), "neutral")
         label = source.upper()
-        msg = f"{label}: {prev} → {new_regime}"
+        msg = f"{label}: {confirmed} → {new_regime}"
         try:
             self.portfolio_tab.toast.show_toast(
                 title=f"{label} REGIME FLIP",
-                body=f"Moved from {prev} to {new_regime}.",
+                body=f"Moved from {confirmed} to {new_regime}.",
                 tone=tone,
             )
             self.portfolio_tab.signal_log.add_entry(msg, tone=tone)
