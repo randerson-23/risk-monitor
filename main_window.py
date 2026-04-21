@@ -942,8 +942,8 @@ class MainWindow(QMainWindow):
                 cr_regime=snap["cr"],
                 mc_regime=snap["mc"],
                 overall=snap["overall"],
-                betterment_eq_pct=snap["betterment_eq_pct"],
-                betterment_bond_pct=snap["betterment_bond_pct"],
+                betterment_eq_pct=snap["eq_pct"],
+                betterment_bond_pct=snap["bond_pct"],
                 btc_exposure_pct=snap["btc_exposure"],
                 equity_data=self.equity_tab._data if hasattr(self.equity_tab, "_data") else {},
                 crypto_data=self.crypto_tab._data if hasattr(self.crypto_tab, "_data") else {},
@@ -951,7 +951,7 @@ class MainWindow(QMainWindow):
                 spx_sizing=snap.get("spx_sizing", 0),
                 spx_lean=snap.get("spx_lean", ""),
                 ibit_sizing=snap.get("ibit_sizing", 0),
-                bet_drivers=snap.get("bet_drivers"),
+                bet_drivers=snap.get("alloc_drivers"),
             )
         except Exception as exc:
             print(f"[history] log error: {exc}")

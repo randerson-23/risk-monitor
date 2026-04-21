@@ -146,15 +146,16 @@ class NotificationManager:
             if old and new and old != new:
                 changes.append(f"{label} regime: {old} → {new}")
 
-        # Significant allocation changes (>= 10pp shift)
-        for key, label in (
-            ("btc_exposure",  "BTC Exposure"),
-            ("eq_bond_split", "Betterment Equity/Bond"),
-        ):
-            old = self._prev_state.get(key, 0)
-            new = new_state.get(key, 0)
-            if abs(new - old) >= 10:
-                changes.append(f"{label}: {old}% → {new}%")
+        # Significant allocation changes — BTC uses 15pp threshold to reduce noise
+        old_btc = self._prev_state.get("btc_exposure", 0)
+        new_btc = new_state.get("btc_exposure", 0)
+        if abs(new_btc - old_btc) >= 15:
+            changes.append(f"BTC Exposure: {old_btc}% → {new_btc}%")
+
+        old_eq = self._prev_state.get("eq_bond_split", 0)
+        new_eq = new_state.get("eq_bond_split", 0)
+        if abs(new_eq - old_eq) >= 10:
+            changes.append(f"Equity/Bond: {old_eq}% → {new_eq}%")
 
         # Sector rotation regime flip
         old_rot = self._prev_state.get("sector_rotation_regime")
