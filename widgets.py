@@ -1165,13 +1165,14 @@ class CycleClockWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(250, 230)
-        self._progress   = 0.0
-        self._phase      = "—"
-        self._action     = "—"
-        self._color      = COLORS["na"]
-        self._days_in    = 0
-        self._days_left  = 0
-        self._score      = 0
+        self._progress        = 0.0
+        self._phase           = "—"
+        self._action          = "—"
+        self._color           = COLORS["na"]
+        self._days_in         = 0
+        self._days_left       = 0
+        self._blocks_left     = 0   # 0 = not yet set from live data
+        self._score           = 0
         self._refresh()
 
     def _refresh(self):
@@ -1185,6 +1186,22 @@ class CycleClockWidget(QWidget):
         self._days_in    = (now - last).days
         self._days_left  = (nxt - now).days
         self._progress   = min(1.0, self._days_in / total)
+        for end_frac, label, color, action, score in _CYCLE_PHASES:
+            if self._progress <= end_frac:
+                self._phase  = label
+                self._color  = color
+                self._action = action
+                self._score  = score
+                break
+        self.update()
+
+    def update_live(self, days_in: int, days_left: float, progress: float,
+                    blocks_left: int = 0):
+        """Override with live block-data values (same source as bitbo.io/halving/)."""
+        self._days_in     = int(days_in)
+        self._days_left   = max(0, round(days_left))
+        self._blocks_left = int(blocks_left)
+        self._progress    = min(1.0, max(0.0, progress))
         for end_frac, label, color, action, score in _CYCLE_PHASES:
             if self._progress <= end_frac:
                 self._phase  = label
@@ -1250,8 +1267,11 @@ class CycleClockWidget(QWidget):
         p.setFont(numeric_font(10))
         p.drawText(QRectF(cx - inner * 0.85, cy - inner * 0.18, inner * 1.7, 15),
                    Qt.AlignmentFlag.AlignCenter, f"Day {self._days_in}")
+        countdown = f"{self._days_left}d to halving"
+        if self._blocks_left > 0:
+            countdown = f"{self._blocks_left:,} blocks  ·  {self._days_left}d"
         p.drawText(QRectF(cx - inner * 0.85, cy + inner * 0.08, inner * 1.7, 15),
-                   Qt.AlignmentFlag.AlignCenter, f"{self._days_left}d to halving")
+                   Qt.AlignmentFlag.AlignCenter, countdown)
 
         action_y = cy + inner + track_w * 0.5 + 10
         p.setPen(QPen(QColor(self._color)))
