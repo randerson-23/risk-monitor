@@ -487,6 +487,24 @@ def fetch_bitcoin_extra_data() -> dict:
         data = r.json()
         result["difficulty_adj_pct"]      = round(float(data["difficultyChange"]) * 100, 2)
         result["difficulty_adj_eta_days"] = round(float(data["remainingTime"]) / 86400, 1)
+
+        # Live halving countdown — same data source as bitbo.io/halving/
+        # Next halving at block 1,050,000; last was block 840,000 (Apr 19 2024)
+        _NEXT_HALVING_BLOCK = 1_050_000
+        _LAST_HALVING_DATE  = datetime(2024, 4, 19)
+        block_height = int(data.get("height", 0))
+        time_avg_ms  = float(data.get("timeAvg", 600_000))   # ms per block, default 10 min
+        if block_height > 0:
+            blocks_left  = max(0, _NEXT_HALVING_BLOCK - block_height)
+            days_left    = blocks_left * time_avg_ms / 1_000 / 86_400
+            days_in      = (datetime.now() - _LAST_HALVING_DATE).days
+            total_est    = days_in + days_left
+            progress     = min(1.0, days_in / total_est) if total_est > 0 else 0.0
+            result["halving_block_height"]     = block_height
+            result["halving_blocks_remaining"] = blocks_left
+            result["halving_days_remaining"]   = round(days_left, 1)
+            result["halving_days_in"]          = days_in
+            result["halving_progress"]         = round(progress, 5)
     except Exception:
         pass
 

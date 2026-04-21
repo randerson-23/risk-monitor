@@ -854,6 +854,15 @@ class PortfolioTab(QWidget):
     # ── BTC ────────────────────────────────────────────────────────────────────
 
     def _update_btc_card(self, cr):
+        # Push live halving data to the clock widget before reading its state
+        h_progress    = self._crypto_data.get("halving_progress")
+        h_days_in     = self._crypto_data.get("halving_days_in")
+        h_days_left   = self._crypto_data.get("halving_days_remaining")
+        h_blocks_left = self._crypto_data.get("halving_blocks_remaining", 0)
+        if h_progress is not None and h_days_in is not None and h_days_left is not None:
+            self.cycle_clock.update_live(h_days_in, h_days_left, h_progress,
+                                         blocks_left=h_blocks_left)
+
         exposure = _btc_exposure(cr.get("score", 0))
         color = _exposure_color(exposure)
         cyc_action = self.cycle_clock.get_action()
