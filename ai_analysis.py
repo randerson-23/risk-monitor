@@ -75,16 +75,16 @@ def _build_snapshot_context(snapshot: dict, equity_data: dict,
 
     # Allocations
     lines.append(f"\nALLOCATIONS:")
-    lines.append(f"  Betterment: EQ {snapshot.get('betterment_eq_pct','?')}% / BOND {snapshot.get('betterment_bond_pct','?')}%")
+    lines.append(f"  Equity/Bond sleeve: EQ {snapshot.get('eq_pct', snapshot.get('betterment_eq_pct', '?'))}% / BOND {snapshot.get('bond_pct', snapshot.get('betterment_bond_pct', '?'))}%")
     lines.append(f"  BTC/IBIT deployed: {snapshot.get('btc_exposure','?')}%")
     lines.append(f"  SPX premium sizing: {snapshot.get('spx_sizing','?')}×")
     lines.append(f"  SPX directional lean: {snapshot.get('spx_lean','?')}")
     lines.append(f"  IBIT premium sizing: {snapshot.get('ibit_sizing','?')}×")
 
-    # Betterment drivers
-    drivers = snapshot.get("bet_drivers", [])
+    # Equity/Bond allocation drivers
+    drivers = snapshot.get("alloc_drivers", snapshot.get("bet_drivers", []))
     if drivers:
-        lines.append(f"\nBETTERMENT DRIVERS:")
+        lines.append(f"\nEQUITY/BOND ALLOCATION DRIVERS:")
         for d in drivers:
             lines.append(f"  • {d}")
 
@@ -195,7 +195,7 @@ def _build_snapshot_context(snapshot: dict, equity_data: dict,
 def _build_system_prompt() -> str:
     return """You are a senior risk analyst assistant embedded in a personal portfolio dashboard. The user runs 3 strategies:
 
-1. BETTERMENT CORE PORTFOLIO (40% of NW) — Global equity/bond split via Betterment. You are advising on the equity vs bond target percentage.
+1. EQUITY / BOND CORE PORTFOLIO (40% of NW) — Global equity/bond split. You are advising on the equity vs bond target percentage.
 2. BITCOIN / IBIT (40% of NW) — Pure BTC exposure via IBIT ETF, with a premium overlay: covered calls at 0.15 delta (goal: not get called) and cash-secured puts at 0.20 delta (goal: accumulation). Cash held in SGOV.
 3. SPX/ES PREMIUM SELLING (20% of NW) — Sells premium on SPX, /MES, /ES. Comfortable selling naked on the leaning side. 1DTE, 30DTE, 45DTE tenors. Cash in treasuries.
 

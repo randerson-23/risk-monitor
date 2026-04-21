@@ -813,14 +813,43 @@ def _safe_pct(series: pd.Series, n: int) -> float | None:
     return None
 
 
+def _extract_close(raw: pd.DataFrame) -> pd.DataFrame:
+    """Robustly extract per-ticker Close prices from a yf.download result."""
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+    cols = raw.columns
+    if isinstance(cols, pd.MultiIndex):
+        levels = [cols.get_level_values(i).tolist() for i in range(cols.nlevels)]
+        # yfinance >= 0.2 uses (field, ticker) ordering; older used (ticker, field)
+        if "Close" in levels[0]:
+            return raw["Close"]
+        if "Close" in levels[1]:
+            return raw.xs("Close", level=1, axis=1)
+        # Adjusted close may be labelled differently — take first field level
+        first_field = levels[0][0]
+        return raw[first_field]
+    # Single-ticker or already flat
+    return raw
+
+
 def fetch_sector_data() -> dict:
+    import time
     all_tickers = _SECTOR_TICKERS + ["SPY"]
-    try:
-        df = yf.download(
-            all_tickers, period="1y", auto_adjust=True, progress=False
-        )["Close"].dropna(how="all")
-    except Exception as exc:
-        return {"error": str(exc), "sectors": {}, "sorted_by_rs": [],
+    last_exc = None
+    for attempt in range(3):
+        try:
+            raw = yf.download(
+                all_tickers, period="1y", auto_adjust=True, progress=False,
+                threads=False,
+            )
+            df = _extract_close(raw).dropna(how="all")
+            break
+        except Exception as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+    else:
+        return {"error": str(last_exc), "sectors": {}, "sorted_by_rs": [],
                 "rotation_regime": "MIXED", "timestamp": datetime.now()}
 
     spy = df["SPY"].dropna() if "SPY" in df.columns else pd.Series(dtype=float)
